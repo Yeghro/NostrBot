@@ -1,19 +1,15 @@
 import WebSocket from 'ws';
-import dotenv from 'dotenv';
-import crypto, { createDecipheriv, createHash } from 'crypto'; // For UUID generation
-import { decrypt, hexToString, } from './encryption.js'; // Make sure these functions are imported
+import crypto, { createDecipheriv } from 'crypto'; // For UUID generation
+import { decrypt } from './encryption.js'; // Make sure these functions are imported
 import { getSharedSecret } from 'noble-secp256k1';
+import { publicKey, privateKey } from './configs.js';
 
-dotenv.config();
-const publicKey = process.env.PUBLIC_KEY;
-const privateKey = process.env.PRIVATE_KEY;
-console.log('Bot starting with public key:', publicKey);
 
 let ws; // WebSocket connection
 
 function sendSubscription() {
   const subscriptionId = crypto.randomUUID();
-  const subscription = ["REQ", subscriptionId, { kinds: [4] }]; // Subscribe to all authors for kind 1
+  const subscription = ["REQ", subscriptionId, { kinds: [4,1] }]; // Subscribe to all authors for kind 1
   ws.send(JSON.stringify(subscription));
   console.log(`${new Date().toISOString()} - Subscription message sent:`, JSON.stringify(subscription));
 }
@@ -49,61 +45,60 @@ function connectWebSocket() {
     });
 }
 
-function isJsonString(str) {
-  try {
-      JSON.parse(str);
-  } catch (e) {
-      return false;
-  }
-  return true;
-}
 
 function isLikelyJson(data) {
   let trimmedData = data.trim();
-  return trimmedData.startsWith('{') && trimmedData.endsWith('}') ||
-         trimmedData.startsWith('[') && trimmedData.endsWith(']');
+  return (trimmedData.startsWith('{') && trimmedData.endsWith('}')) ||
+         (trimmedData.startsWith('[') && trimmedData.endsWith(']'));
 }
+
 
 
 function handleEvent(data) {
-  //console.log(`${new Date().toISOString()} - Received raw data:`, data);  // Log raw data for debugging
-
-  if (typeof data === 'string' && isLikelyJson(data)) {
+  let event;
+  
+  if (typeof data === 'string') {
+    if (isLikelyJson(data)) {
       try {
-          const parsedData = JSON.parse(data);
-          if (!Array.isArray(parsedData) || parsedData.length < 2) {
-              console.error(`${new Date().toISOString()} - Received malformed JSON data:`, parsedData);
-              return;
-          }
-
-          const messageType = parsedData[0];
-          switch (messageType) {
-              case "EVENT":
-                  const event = parsedData[2];
-                  processEvent(event);
-                  break;
-              default:
-                  //console.log(`${new Date().toISOString()} - Handled non-event JSON data:`, parsedData);
-          }
+        // Parse the JSON string
+        event = JSON.parse(data);
       } catch (error) {
-          console.error(`${new Date().toISOString()} - Error parsing JSON or processing event:`, error);
+        console.error(`${new Date().toISOString()} - Error parsing JSON:`, error);
+        return;
       }
+    } else {
+      console.log(`${new Date().toISOString()} - Received non-JSON string, skipping:`, data);
+      return;
+    }
+  } else if (typeof data === 'object' && data !== null) {
+    // Use the data directly if it's already an object
+    event = data;
   } else {
-      //console.log(`${new Date().toISOString()} - Non-JSON data or identifier received, skipping:`, data);
+    console.log(`${new Date().toISOString()} - Invalid data type received, skipping:`, data);
+    return;
+  }
+
+  // Check if the event is correctly structured and has the necessary properties
+  if (event && event.kind && Array.isArray(event.tags)) {
+    console.log(`${new Date().toISOString()} - Processing event:`, event);
+    processEvent(event);
+  } else {
+    console.error(`${new Date().toISOString()} - Malformed or incomplete event data received:`, event);
   }
 }
 
-
-
-
-
 function processEvent(event) {
   console.log(`${new Date().toISOString()} - Processing event:`, event);
-  // Check if tags exist and are an array
+
+  // Check if tags exist and ensure they are an array
   if (Array.isArray(event.tags)) {
+    // Find 'p' tag that matches the bot's public key
     const pTag = event.tags.find(tag => Array.isArray(tag) && tag[0] === 'p' && tag[1] === publicKey);
+    console.log("Checking tags", event.tags);
+    console.log("Public key used for checking", publicKey);
+
     if (pTag) {
-      console.log(`${new Date().toISOString()} - Event with our pubkey:`, event);
+      console.log(`${new Date().toISOString()} - Event with our pubkey found:`, event);
       switch (event.kind) {
         case 1:
           processTextNote(event);
@@ -123,25 +118,14 @@ function processEvent(event) {
 }
 
 function processTextNote(event) {
-  console.log(`${new Date().toISOString()} - Received text note:`, event.content);
-
-}
-
-function processTaggedTextNote(event) {
   if (event.content) {
-    try {
-      let decryptedMessage = decrypt(privateKey, event.pubkey, event.content);
-      let readableContent = decryptedMessage;
-      console.log(`${new Date().toISOString()} - Decrypted text note:`, readableContent);
-      // Process the decrypted text note content
-      // ...
-    } catch (error) {
-      console.error(`${new Date().toISOString()} - Error decrypting text note:`, error);
-    }
+    console.log(`${new Date().toISOString()} - Received text note:`, event.content);
+    // Here you can implement additional processing of the text note content
   } else {
     console.log(`${new Date().toISOString()} - No content in text note.`);
   }
 }
+
 
 function processDirectMessage(event) {
   console.log(`${new Date().toISOString()} - Attempting to process direct message:`, event);
@@ -149,14 +133,13 @@ function processDirectMessage(event) {
     console.error('Not a direct message:', event);
     return;
   }
-
   if (event.content && event.content.includes('?iv=')) {
     const [encryptedMessage, ivBase64] = event.content.split('?iv=');
     if (ivBase64) {
       try {
         const iv = Buffer.from(ivBase64, 'base64');
         const sharedSecret = getSharedSecret(privateKey, '02' + event.pubkey);
-        const encryptionKey = createHash('sha256').update(sharedSecret).digest().slice(0, 32);
+        let encryptionKey = Buffer.from(sharedSecret.slice(1, 33)); // Use only the X coordinate.
         const decipher = createDecipheriv('aes-256-cbc', encryptionKey, iv);
         let decryptedMessage = decipher.update(encryptedMessage, 'base64', 'utf8');
         decryptedMessage += decipher.final('utf8');
@@ -171,7 +154,6 @@ function processDirectMessage(event) {
     console.log(`${new Date().toISOString()} - No content or missing IV in direct message.`);
   }
 }
-
 
 
 

@@ -1,5 +1,6 @@
 import { schnorr, utils } from 'noble-secp256k1';
 import { bytesToHex } from './utils.js';
+import { publicKey, privateKey } from './configs.js';
 
 export async function getSignedEvent(event, privateKey) {
   try {

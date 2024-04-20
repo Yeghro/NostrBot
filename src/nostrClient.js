@@ -9,7 +9,7 @@ let ws; // WebSocket connection
 
 function sendSubscription() {
   const subscriptionId = crypto.randomUUID();
-  const subscription = ["REQ", subscriptionId, { kinds: [4,1] }]; // Subscribe to all authors for kind 1
+  const subscription = ["REQ", subscriptionId, { kinds: [4] }]; // Subscribe to all authors for kind 1
   ws.send(JSON.stringify(subscription));
   console.log(`${new Date().toISOString()} - Subscription message sent:`, JSON.stringify(subscription));
 }
@@ -63,32 +63,32 @@ function handleEvent(data) {
         // Parse the JSON string
         event = JSON.parse(data);
       } catch (error) {
-        console.error(`${new Date().toISOString()} - Error parsing JSON:`, error);
+        //console.error(`${new Date().toISOString()} - Error parsing JSON:`, error);
         return;
       }
     } else {
-      console.log(`${new Date().toISOString()} - Received non-JSON string, skipping:`, data);
+      //console.log(`${new Date().toISOString()} - Received non-JSON string, skipping:`, data);
       return;
     }
   } else if (typeof data === 'object' && data !== null) {
     // Use the data directly if it's already an object
     event = data;
   } else {
-    console.log(`${new Date().toISOString()} - Invalid data type received, skipping:`, data);
+    //console.log(`${new Date().toISOString()} - Invalid data type received, skipping:`, data);
     return;
   }
 
   // Check if the event is correctly structured and has the necessary properties
   if (event && event.kind && Array.isArray(event.tags)) {
-    console.log(`${new Date().toISOString()} - Processing event:`, event);
+    //console.log(`${new Date().toISOString()} - Processing event:`, event);
     processEvent(event);
   } else {
-    console.error(`${new Date().toISOString()} - Malformed or incomplete event data received:`, event);
+    //console.error(`${new Date().toISOString()} - Malformed or incomplete event data received:`, event);
   }
 }
 
 function processEvent(event) {
-  console.log(`${new Date().toISOString()} - Processing event:`, event);
+  //console.log(`${new Date().toISOString()} - Processing event:`, event);
 
   // Check if tags exist and ensure they are an array
   if (Array.isArray(event.tags)) {
@@ -110,7 +110,7 @@ function processEvent(event) {
           console.log(`${new Date().toISOString()} - Unsupported event kind:`, event.kind);
       }
     } else {
-      console.log(`${new Date().toISOString()} - Event does not include our pubkey in tags, skipping.`);
+      //console.log(`${new Date().toISOString()} - Event does not include our pubkey in tags, skipping.`);
     }
   } else {
     console.error(`${new Date().toISOString()} - Malformed tags in event:`, event);
@@ -128,34 +128,53 @@ function processTextNote(event) {
 
 
 function processDirectMessage(event) {
-  console.log(`${new Date().toISOString()} - Attempting to process direct message:`, event);
+  console.log("Processing event:", event);
   if (event.kind !== 4) {
     console.error('Not a direct message:', event);
     return;
   }
-  if (event.content && event.content.includes('?iv=')) {
-    const [encryptedMessage, ivBase64] = event.content.split('?iv=');
-    if (ivBase64) {
-      try {
-        const iv = Buffer.from(ivBase64, 'base64');
-        const sharedSecret = getSharedSecret(privateKey, '02' + event.pubkey);
-        let encryptionKey = Buffer.from(sharedSecret.slice(1, 33)); // Use only the X coordinate.
-        const decipher = createDecipheriv('aes-256-cbc', encryptionKey, iv);
-        let decryptedMessage = decipher.update(encryptedMessage, 'base64', 'utf8');
-        decryptedMessage += decipher.final('utf8');
-        console.log(`${new Date().toISOString()} - Decrypted direct message:`, decryptedMessage);
-      } catch (error) {
-        console.error(`${new Date().toISOString()} - Error decrypting direct message:`, error);
-      }
-    } else {
-      console.error('IV missing in the message content:', event.content);
+
+  console.log("Received content:", event.content);
+
+  const [encryptedMessage, ivBase64] = event.content.split('?iv=');
+  if (encryptedMessage && ivBase64) {
+    console.log("Encrypted message:", encryptedMessage);
+    console.log("IV (base64):", ivBase64);
+
+    const iv = Buffer.from(ivBase64, 'base64');
+    if (iv.length !== 16) {
+      console.error("Invalid IV length: " + iv.length + " bytes. Must be exactly 16 bytes.");
+      return;
+    }
+
+    const sharedSecret = getSharedSecret(privateKey, '02' + event.pubkey);
+    console.log("Shared secret:", sharedSecret.toString('hex'));
+
+    const encryptionKey = Buffer.from(sharedSecret.slice(1, 33));
+    console.log("Encryption key:", encryptionKey.toString('hex'));
+    console.log("Extracted pubkey:", event.pubkey);
+
+    try {
+      const decipher = createDecipheriv('aes-256-cbc', encryptionKey, iv);
+      let decryptedMessage = decipher.update(encryptedMessage, 'base64', 'binary');
+      decryptedMessage += decipher.final('binary');
+  
+      console.log("Decrypted message (Buffer):", decryptedMessage);
+      const decryptedText = decryptedMessage.toString('utf8');
+      console.log("Decrypted message (text):", decryptedText);
+
+    } catch (error) {
+      console.error("Error decrypting message:", error);
+      console.error("Encryption Key:", encryptionKey.toString('hex'));
+      console.error("IV used for decryption (hex):", iv.toString('hex'));
+      console.error("Ciphertext Base64:", encryptedMessage);
     }
   } else {
-    console.log(`${new Date().toISOString()} - No content or missing IV in direct message.`);
+    console.error('Missing encrypted message or IV in the expected format.');
+    console.error('Expected format: "<encrypted_text>?iv=<initialization_vector>"');
+    console.error('Received content:', event.content);
   }
 }
-
-
 
 function processReadableContent(content) {
   console.log(`${new Date().toISOString()} - Processing content:`, content);

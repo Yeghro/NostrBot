@@ -3,6 +3,8 @@ import crypto, { createDecipheriv } from 'crypto'; // For UUID generation
 import { decrypt } from './encryption.js'; // Make sure these functions are imported
 import { getSharedSecret } from 'noble-secp256k1';
 import { publicKey, privateKey } from './configs.js';
+import fetch from 'node-fetch';
+import { TextDecoder } from 'util';
 
 
 let ws; // WebSocket connection
@@ -117,6 +119,7 @@ function processEvent(event) {
   }
 }
 
+
 function processTextNote(event) {
   if (event.content) {
     console.log(`${new Date().toISOString()} - Received text note:`, event.content);
@@ -127,57 +130,99 @@ function processTextNote(event) {
 }
 
 
-function processDirectMessage(event) {
+async function processDirectMessage(event) {
   console.log("Processing event:", event);
   if (event.kind !== 4) {
-    console.error('Not a direct message:', event);
-    return;
+      console.error('Not a direct message:', event);
+      return;
   }
 
   console.log("Received content:", event.content);
-
   const [encryptedMessage, ivBase64] = event.content.split('?iv=');
   if (encryptedMessage && ivBase64) {
-    console.log("Encrypted message:", encryptedMessage);
-    console.log("IV (base64):", ivBase64);
+      console.log("Encrypted message:", encryptedMessage);
+      console.log("IV (base64):", ivBase64);
 
-    const iv = Buffer.from(ivBase64, 'base64');
-    if (iv.length !== 16) {
-      console.error("Invalid IV length: " + iv.length + " bytes. Must be exactly 16 bytes.");
-      return;
-    }
+      const iv = Buffer.from(ivBase64, 'base64');
+      if (iv.length !== 16) {
+          console.error("Invalid IV length: " + iv.length + " bytes. Must be exactly 16 bytes.");
+          return;
+      }
 
-    // Derive the shared secret and ensure it's a Buffer
-    let sharedSecret = getSharedSecret(privateKey, '02' + event.pubkey);
-    if (typeof sharedSecret === 'string') {
-      sharedSecret = Buffer.from(sharedSecret, 'hex');  // Convert from hex string if necessary
-    }
+      try {
+          let sharedSecret = getSharedSecret(privateKey, '02' + event.pubkey);
+          if (typeof sharedSecret === 'string') {
+              sharedSecret = Buffer.from(sharedSecret, 'hex');  // Convert from hex string if necessary
+          }
 
-    console.log("Shared secret (Buffer):", sharedSecret.toString('hex'));
-    const encryptionKey = Buffer.from(sharedSecret.slice(1, 33)); // Use only the X coordinate
-    console.log("Encryption key (Buffer):", encryptionKey.toString('hex'));
-    console.log("Extracted pubkey:", event.pubkey);
+          console.log("Shared secret (Buffer):", sharedSecret.toString('hex'));
+          const encryptionKey = Buffer.from(sharedSecret.slice(1, 33)); // Use only the X coordinate
+          console.log("Encryption key (Buffer):", encryptionKey.toString('hex'));
+          console.log("Extracted pubkey:", event.pubkey);
 
-    try {
-      const decipher = createDecipheriv('aes-256-cbc', encryptionKey, iv);
-      let decryptedMessage = decipher.update(encryptedMessage, 'base64', 'binary');
-      decryptedMessage += decipher.final('binary');
-  
-      console.log("Decrypted message (Buffer):", decryptedMessage);
-      const decryptedText = decryptedMessage.toString('utf8');
-      console.log("Decrypted message (text):", decryptedText);
-    } catch (error) {
-      console.error("Error decrypting message:", error);
-      console.error("Encryption Key:", encryptionKey.toString('hex'));
-      console.error("IV used for decryption (hex):", iv.toString('hex'));
-      console.error("Ciphertext Base64:", encryptedMessage);
-    }
+          const decipher = createDecipheriv('aes-256-cbc', encryptionKey, iv);
+          let decryptedMessage = decipher.update(encryptedMessage, 'base64', 'binary');
+          decryptedMessage += decipher.final('binary');
+
+          console.log("Decrypted message (Buffer):", decryptedMessage);
+          const decryptedText = decryptedMessage.toString('utf8');
+          console.log("Decrypted message (text):", decryptedText);
+
+          // Prepare the message for Ollama
+          const messages = [{
+              role: "user",
+              content: decryptedText
+          }];
+
+          // Send message to Ollama and handle the response
+          const ollamaResponse = await sendMessageToOllama(messages);
+          console.log("Ollama response:", ollamaResponse);
+
+          // Process the Ollama response to generate a reply or further action
+          if (ollamaResponse && ollamaResponse.content) {
+              // Example: send the response back to the user or handle it according to your application's logic
+              console.log("Processed reply from Ollama:", ollamaResponse.content);
+          }
+      } catch (error) {
+          console.error("Error decrypting message or communicating with Ollama:", error);
+      }
   } else {
-    console.error('Missing encrypted message or IV in the expected format.');
-    console.error('Expected format: "<encrypted_text>?iv=<initialization_vector>"');
-    console.error('Received content:', event.content);
+      console.error('Missing encrypted message or IV in the expected format.');
+      console.error('Expected format: "<encrypted_text>?iv=<initialization_vector>"');
+      console.error('Received content:', event.content);
   }
 }
+
+
+
+async function sendMessageToOllama(messages) {
+  const body = {
+    model: "dolphincoder:latest",  // Adjust the model as necessary
+    prompt: messages.map(msg => msg.content).join(" "),  // Combining all messages into one prompt
+    stream: false  // Disable streaming for the response
+  };
+
+  try {
+    const response = await fetch("http://localhost:11434/api/generate", {
+      method: "POST",
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+      throw new Error(`API Error: ${response.status} ${response.statusText}`);
+    }
+
+    const responseData = await response.json();  // Directly parse the JSON response
+    return responseData;  // Return the parsed JSON data
+  } catch (error) {
+    console.error("Failed to send message to Ollama API:", error);
+    throw error;  // Re-throw the error for further handling
+  }
+}
+
 
 function processReadableContent(content) {
   console.log(`${new Date().toISOString()} - Processing content:`, content);

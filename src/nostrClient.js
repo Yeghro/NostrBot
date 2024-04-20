@@ -147,11 +147,15 @@ function processDirectMessage(event) {
       return;
     }
 
-    const sharedSecret = getSharedSecret(privateKey, '02' + event.pubkey);
-    console.log("Shared secret:", sharedSecret.toString('hex'));
+    // Derive the shared secret and ensure it's a Buffer
+    let sharedSecret = getSharedSecret(privateKey, '02' + event.pubkey);
+    if (typeof sharedSecret === 'string') {
+      sharedSecret = Buffer.from(sharedSecret, 'hex');  // Convert from hex string if necessary
+    }
 
-    const encryptionKey = Buffer.from(sharedSecret.slice(1, 33));
-    console.log("Encryption key:", encryptionKey.toString('hex'));
+    console.log("Shared secret (Buffer):", sharedSecret.toString('hex'));
+    const encryptionKey = Buffer.from(sharedSecret.slice(1, 33)); // Use only the X coordinate
+    console.log("Encryption key (Buffer):", encryptionKey.toString('hex'));
     console.log("Extracted pubkey:", event.pubkey);
 
     try {
@@ -162,7 +166,6 @@ function processDirectMessage(event) {
       console.log("Decrypted message (Buffer):", decryptedMessage);
       const decryptedText = decryptedMessage.toString('utf8');
       console.log("Decrypted message (text):", decryptedText);
-
     } catch (error) {
       console.error("Error decrypting message:", error);
       console.error("Encryption Key:", encryptionKey.toString('hex'));

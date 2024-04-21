@@ -1,6 +1,5 @@
 import { getSharedSecret } from 'noble-secp256k1';
 import crypto, { createCipheriv, createDecipheriv } from 'crypto';
-import { hexToBytes } from './utils.js';
 
 export function encrypt(privkey, pubkey, message) {
   try {

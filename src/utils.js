@@ -1,6 +1,10 @@
 export function hexToBytes(hex) {
-    return Uint8Array.from(hex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+  const bytes = [];
+  for (let i = 0; i < hex.length; i += 2) {
+      bytes.push(parseInt(hex.substring(i, i + 2), 16));
   }
+  return Buffer.from(bytes);
+}
   
 export function bytesToHex(bytes) {
     return Array.from(bytes).reduce((str, byte) => str + byte.toString(16).padStart(2, "0"), "");

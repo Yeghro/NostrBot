@@ -4,16 +4,18 @@ import { decrypt } from './encryption.js'; // Make sure these functions are impo
 import { getSharedSecret } from 'noble-secp256k1';
 import { publicKey, privateKey } from './configs.js';
 import fetch from 'node-fetch';
-import { TextDecoder } from 'util';
-
+import { getSignedEvent } from './eventSigning.js';
 
 let ws; // WebSocket connection
 
+let startTime;  // Store the start time at a scope accessible by the ws.on('message') handler
+
 function sendSubscription() {
-  const subscriptionId = crypto.randomUUID();
-  const subscription = ["REQ", subscriptionId, { kinds: [4] }]; // Subscribe to all authors for kind 1
-  ws.send(JSON.stringify(subscription));
-  console.log(`${new Date().toISOString()} - Subscription message sent:`, JSON.stringify(subscription));
+    startTime = Math.floor(Date.now() / 1000);  // Get current Unix timestamp
+    const subscriptionId = crypto.randomUUID();
+    const subscription = ["REQ", subscriptionId, { kinds: [4] }];  // Subscribe to kind 4 events
+    ws.send(JSON.stringify(subscription));
+    console.log(`${new Date().toISOString()} - Subscription message sent with timestamp:`, startTime);
 }
 
 
@@ -26,16 +28,21 @@ function connectWebSocket() {
     });
 
     ws.on('message', (data) => {
-        const messageString = data.toString();
-        //console.log(`${new Date().toISOString()} - Message received:`, messageString);
-        try {
-            const events = JSON.parse(messageString);
-            events.forEach(event => handleEvent(event));
-        } catch (error) {
-            console.error(`${new Date().toISOString()} - Error parsing JSON or processing event:`, error);
-        }
+      const messageString = data.toString();
+      try {
+          const events = JSON.parse(messageString);
+          events.forEach(event => {
+              if (event.created_at && event.created_at >= startTime) {  // Check if the event's timestamp is after the bot started
+                  handleEvent(event);
+              } else {
+                  console.log(`Ignoring old event from before start time: ${event.created_at}`);
+              }
+          });
+      } catch (error) {
+          console.error(`${new Date().toISOString()} - Error parsing JSON or processing event:`, error);
+      }
     });
-
+  
     ws.on('error', (error) => {
         console.error(`${new Date().toISOString()} - WebSocket error:`, error);
         setTimeout(connectWebSocket, 5000);
@@ -169,45 +176,53 @@ async function processDirectMessage(event) {
           console.log("Decrypted message (text):", decryptedText);
 
           // Prepare the message for Ollama
-          const messages = [{
-              role: "user",
-              content: decryptedText
-          }];
-
-          // Send message to Ollama and handle the response
+          const messages = [{ role: "user", content: decryptedText }];
           const ollamaResponse = await sendMessageToOllama(messages);
-          console.log("Ollama response:", ollamaResponse);
-
-          // Process the Ollama response to generate a reply or further action
-          if (ollamaResponse && ollamaResponse.content) {
-              // Example: send the response back to the user or handle it according to your application's logic
-              console.log("Processed reply from Ollama:", ollamaResponse.content);
+          console.log("Ollama response received:", ollamaResponse);
+    
+          // Verify response structure and extract the content appropriately
+          const replyContent = typeof ollamaResponse === 'string' ? ollamaResponse : "No response generated.";
+          console.log("Formatted reply content:", replyContent);
+              
+          const replyEvent = {
+            pubkey: publicKey, // Your bot's public key
+            created_at: Math.floor(Date.now() / 1000),
+            kind: 4,
+            tags: [['p', event.pubkey]], // Set the recipient's public key here
+            content: replyContent
+          };
+          
+          const signedReply = await getSignedEvent(replyEvent, privateKey);
+          if (!signedReply) {
+            console.error('Failed to sign the reply event.');
+            return;
           }
-      } catch (error) {
+    
+          ws.send(JSON.stringify(["EVENT", signedReply]));
+          console.log('Reply sent:', signedReply);
+        } catch (error) {
           console.error("Error decrypting message or communicating with Ollama:", error);
+        }
+      } else {
+        console.error('Missing encrypted message or IV in the expected format.');
+        console.error('Expected format: "<encrypted_text>?iv=<initialization_vector>"');
+        console.error('Received content:', event.content);
       }
-  } else {
-      console.error('Missing encrypted message or IV in the expected format.');
-      console.error('Expected format: "<encrypted_text>?iv=<initialization_vector>"');
-      console.error('Received content:', event.content);
-  }
-}
-
+    }
+        
 
 
 async function sendMessageToOllama(messages) {
   const body = {
-    model: "dolphincoder:latest",  // Adjust the model as necessary
-    prompt: messages.map(msg => msg.content).join(" "),  // Combining all messages into one prompt
-    stream: false  // Disable streaming for the response
+    model: "sofs",
+    prompt: messages.map(msg => msg.content).join(" "),
+    stream: false
   };
 
   try {
     const response = await fetch("http://localhost:11434/api/generate", {
       method: "POST",
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
 
@@ -215,14 +230,23 @@ async function sendMessageToOllama(messages) {
       throw new Error(`API Error: ${response.status} ${response.statusText}`);
     }
 
-    const responseData = await response.json();  // Directly parse the JSON response
-    return responseData;  // Return the parsed JSON data
+    const responseData = await response.json();
+    console.log("Full Ollama API Response:", JSON.stringify(responseData, null, 2));
+
+    // Check if the response has the expected structure
+    if (responseData.hasOwnProperty("response")) {
+      const replyContent = responseData.response;
+      console.log("Formatted reply content:", replyContent);
+      return replyContent;
+    } else {
+      console.error("Unexpected response structure from Ollama API:", responseData);
+      return "No response generated.";
+    }
   } catch (error) {
     console.error("Failed to send message to Ollama API:", error);
-    throw error;  // Re-throw the error for further handling
+    throw error;
   }
 }
-
 
 function processReadableContent(content) {
   console.log(`${new Date().toISOString()} - Processing content:`, content);

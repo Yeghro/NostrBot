@@ -6,53 +6,63 @@ import { publicKey, privateKey } from './configs.js';
 import fetch from 'node-fetch';
 import { getSignedEvent } from './eventSigning.js';
 
-let ws; // WebSocket connection
-
 let startTime;  // Store the start time at a scope accessible by the ws.on('message') handler
 
-function sendSubscription() {
-    startTime = Math.floor(Date.now() / 1000);  // Get current Unix timestamp
-    const subscriptionId = crypto.randomUUID();
-    const subscription = ["REQ", subscriptionId, { kinds: [4,1] }];  // Subscribe to kind 4 events
+let wsConnections = []; // Array to store multiple WebSocket connections
+
+function sendSubscription(ws) {
+  startTime = Math.floor(Date.now() / 1000);  // Get current Unix timestamp
+  const subscriptionId = crypto.randomUUID();
+    const subscription = ["REQ", subscriptionId, { kinds: [4,1] }];  // Subscribe to kind 4 and 1 events
     ws.send(JSON.stringify(subscription));
-    console.log(`${new Date().toISOString()} - Subscription message sent with timestamp:`, startTime);
+    console.log(`${new Date().toISOString()} - Subscription message sent to ${ws.url} with timestamp:`, startTime);
 }
 
-
-function connectWebSocket() {
-    ws = new WebSocket('wss://nostrpub.yeghro.site');
+function connectWebSocket(relayUrl) {
+    const ws = new WebSocket(relayUrl);
 
     ws.on('open', () => {
-        console.log(`${new Date().toISOString()} - Connected to the relay`);
-        sendSubscription();
+        console.log(`${new Date().toISOString()} - Connected to the relay: ${relayUrl}`);
+        sendSubscription(ws);
     });
 
     ws.on('message', (data) => {
       const messageString = data.toString();
       try {
-          const events = JSON.parse(messageString);
-          events.forEach(event => {
-              if (event.created_at && event.created_at >= startTime) {  // Check if the event's timestamp is after the bot started
-                  handleEvent(event);
-              } else {
-                  console.log(`Ignoring old event from before start time: ${event.created_at}`);
-              }
-          });
+        const events = JSON.parse(messageString);
+        events.forEach(event => {
+          if (event.created_at && event.created_at >= startTime) {
+            processTextNote(event, ws); // Now passing ws
+          } else {
+            console.log(`Ignoring old event from before start time: ${event.created_at}`);
+          }
+        });
       } catch (error) {
-          console.error(`${new Date().toISOString()} - Error parsing JSON or processing event:`, error);
+        console.error(`${new Date().toISOString()} - Error parsing JSON or processing event:`, error);
       }
     });
-  
+    
+
     ws.on('error', (error) => {
-        console.error(`${new Date().toISOString()} - WebSocket error:`, error);
-        setTimeout(connectWebSocket, 5000);
+        console.error(`${new Date().toISOString()} - WebSocket error for ${relayUrl}:`, error);
+        setTimeout(() => connectWebSocket(relayUrl), 5000);
     });
 
     ws.on('close', () => {
-        console.log(`${new Date().toISOString()} - Disconnected from the relay`);
-        setTimeout(connectWebSocket, 5000);
+        console.log(`${new Date().toISOString()} - Disconnected from the relay: ${relayUrl}`);
+        setTimeout(() => connectWebSocket(relayUrl), 5000);
     });
+
+    wsConnections.push(ws); // Add this WebSocket connection to the array
 }
+
+// Define your relay URLs
+const relayUrls = [
+    'wss://nostrpub.yeghro.site',
+];
+
+// Connect to all relays
+relayUrls.forEach(url => connectWebSocket(url));
 
 
 function isLikelyJson(data) {
@@ -60,7 +70,6 @@ function isLikelyJson(data) {
   return (trimmedData.startsWith('{') && trimmedData.endsWith('}')) ||
          (trimmedData.startsWith('[') && trimmedData.endsWith(']'));
 }
-
 
 
 function handleEvent(data) {
@@ -97,17 +106,29 @@ function handleEvent(data) {
 }
 
 function processEvent(event) {
-  //console.log(`${new Date().toISOString()} - Processing event:`, event);
+  console.log(`${new Date().toISOString()} - Processing event:`, event);
 
-  // Check if tags exist and ensure they are an array
   if (Array.isArray(event.tags)) {
-    // Find 'p' tag that matches the bot's public key
+    // Log all tags for debugging
+    console.log("All tags in the event:", event.tags);
+
     const pTag = event.tags.find(tag => Array.isArray(tag) && tag[0] === 'p' && tag[1] === publicKey);
-    console.log("Checking tags", event.tags);
-    console.log("Public key used for checking", publicKey);
+    const tTag = event.tags.some(tag => Array.isArray(tag) && tag[0] === 't' && triggerKeywords.some(keyword => tag[1].toLowerCase().includes(keyword.toLowerCase())));
 
     if (pTag) {
-      console.log(`${new Date().toISOString()} - Event with our pubkey found:`, event);
+      console.log(`${new Date().toISOString()} - Public key tag found.`);
+    } else {
+      console.log(`${new Date().toISOString()} - No public key tag found.`);
+    }
+
+    if (tTag) {
+      console.log(`${new Date().toISOString()} - Trigger keyword found.`);
+    } else {
+      console.log(`${new Date().toISOString()} - No trigger keyword found in event tags.`);
+    }
+
+    if (pTag || tTag) {
+      console.log(`${new Date().toISOString()} - Event with our pubkey or keyword found:`, event);
       switch (event.kind) {
         case 1:
           processTextNote(event);
@@ -119,47 +140,62 @@ function processEvent(event) {
           console.log(`${new Date().toISOString()} - Unsupported event kind:`, event.kind);
       }
     } else {
-      //console.log(`${new Date().toISOString()} - Event does not include our pubkey in tags, skipping.`);
+      console.log(`${new Date().toISOString()} - Event does not include our pubkey in tags, skipping.`);
     }
   } else {
     console.error(`${new Date().toISOString()} - Malformed tags in event:`, event);
   }
 }
 
+const triggerKeywords = ["askYEGHRO"];
 
-async function processTextNote(event) {
+
+async function processTextNote(event, ws) { // ws parameter added here
   if (event.content) {
     console.log(`${new Date().toISOString()} - Received text note:`, event.content);
 
-    // Prepare the message for Ollama
-    const messages = [{ role: "user", content: event.content }];
-    const ollamaResponse = await sendMessageToOllama(messages);
-    console.log("Ollama response received:", ollamaResponse);
+    // Check if any tag value contains a trigger keyword or the bot's public key
+    const containsTriggerKeyword = event.tags.some(tag => Array.isArray(tag) && tag[0] === 't' && triggerKeywords.some(keyword => tag.slice(1).join('').toLowerCase().includes(keyword.toLowerCase())));
+    const isTaggedWithPublicKey = event.tags.some(tag => Array.isArray(tag) && tag[0] === 'p' && tag[1] === publicKey);
 
-    // Verify response structure and extract the content appropriately
-    const replyContent = typeof ollamaResponse === 'string' ? ollamaResponse : "No response generated.";
-    console.log("Formatted reply content:", replyContent);
+    if (containsTriggerKeyword || isTaggedWithPublicKey) {
+      // Prepare the message for Ollama
+      const messages = [{ role: "user", content: event.content }];
+      const ollamaResponse = await sendMessageToOllama(messages);
+      console.log("Ollama response received:", ollamaResponse);
 
-    const replyEvent = {
-      pubkey: publicKey,
-      created_at: Math.floor(Date.now() / 1000),
-      kind: 1,
-      tags: [['e', event.id], ['p', event.pubkey]],
-      content: replyContent
-    };
+      // Verify response structure and extract the content appropriately
+      const replyContent = typeof ollamaResponse === 'string' ? ollamaResponse : "No response generated.";
+      console.log("Formatted reply content:", replyContent);
 
-    const signedReply = await getSignedEvent(replyEvent, privateKey);
-    if (!signedReply) {
-      console.error('Failed to sign the reply event.');
-      return;
+      const replyEvent = {
+        pubkey: publicKey,
+        created_at: Math.floor(Date.now() / 1000),
+        kind: 1,
+        tags: [['e', event.id], ['p', event.pubkey]],
+        content: replyContent
+      };
+
+      const signedReply = await getSignedEvent(replyEvent, privateKey);
+      if (!signedReply) {
+        console.error('Failed to sign the reply event.');
+        return;
+      }
+
+      if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify(["EVENT", signedReply]));
+          console.log('Reply sent:', signedReply);
+      } else {
+          console.error(`${new Date().toISOString()} - WebSocket is not open.`);
+      }
+    } else {
+      console.log(`${new Date().toISOString()} - No trigger keyword or public key tag found in event tags.`);
     }
-
-    ws.send(JSON.stringify(["EVENT", signedReply]));
-    console.log('Reply sent:', signedReply);
   } else {
     console.log(`${new Date().toISOString()} - No content in text note.`);
   }
 }
+
 
 async function processDirectMessage(event) {
   console.log("Processing event:", event);
@@ -235,7 +271,7 @@ async function processDirectMessage(event) {
 }
 async function sendMessageToOllama(messages) {
   const body = {
-    model: "dolphin-llama3:8b-v2.9-q8_0",
+    model: "sofs",
     prompt: messages.map(msg => msg.content).join(" "),
     stream: false
   };
@@ -252,7 +288,7 @@ async function sendMessageToOllama(messages) {
     }
 
     const responseData = await response.json();
-    console.log("Full Ollama API Response:", JSON.stringify(responseData, null, 2));
+    //console.log("Full Ollama API Response:", JSON.stringify(responseData, null, 2));
 
     // Check if the response has the expected structure
     if (responseData.hasOwnProperty("response")) {
@@ -269,26 +305,6 @@ async function sendMessageToOllama(messages) {
   }
 }
 
-function processReadableContent(content) {
-  console.log(`${new Date().toISOString()} - Processing content:`, content);
-  // Here you can implement logic based on the content, such as responding to commands, storing data, etc.
-}
-function processTaggedEvent(event, pubkey) {
-  console.log(`${new Date().toISOString()} - Processing event tagged with our pubkey:`, event.id);
-  // Here you can add logic based on events specifically tagged with the bot's public key
-}
-
-function handleEncryptedEvent(event) {
-  console.log(`Handling encrypted event with ID: ${event.id}`);
-
-  if (event.content) {
-    let decryptedMessage = decrypt(privateKey, event.pubkey, event.content);
-    displayReadableContent(decryptedMessage);  // Using the newly defined function
-  } else {
-      console.log('No content to decrypt.');
-  }
-}
 
 
 
-connectWebSocket();

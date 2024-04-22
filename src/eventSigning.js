@@ -1,5 +1,3 @@
-import { schnorr, utils } from 'noble-secp256k1';
-import { bytesToHex, hexToBytes } from './utils.js';
 import { finalizeEvent } from 'nostr-tools/pure';
 
 export async function getSignedEvent(event, privateKey) {

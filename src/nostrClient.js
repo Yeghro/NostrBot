@@ -13,7 +13,7 @@ let startTime;  // Store the start time at a scope accessible by the ws.on('mess
 function sendSubscription() {
     startTime = Math.floor(Date.now() / 1000);  // Get current Unix timestamp
     const subscriptionId = crypto.randomUUID();
-    const subscription = ["REQ", subscriptionId, { kinds: [4] }];  // Subscribe to kind 4 events
+    const subscription = ["REQ", subscriptionId, { kinds: [4,1] }];  // Subscribe to kind 4 events
     ws.send(JSON.stringify(subscription));
     console.log(`${new Date().toISOString()} - Subscription message sent with timestamp:`, startTime);
 }
@@ -127,94 +127,115 @@ function processEvent(event) {
 }
 
 
-function processTextNote(event) {
+async function processTextNote(event) {
   if (event.content) {
     console.log(`${new Date().toISOString()} - Received text note:`, event.content);
-    // Here you can implement additional processing of the text note content
+
+    // Prepare the message for Ollama
+    const messages = [{ role: "user", content: event.content }];
+    const ollamaResponse = await sendMessageToOllama(messages);
+    console.log("Ollama response received:", ollamaResponse);
+
+    // Verify response structure and extract the content appropriately
+    const replyContent = typeof ollamaResponse === 'string' ? ollamaResponse : "No response generated.";
+    console.log("Formatted reply content:", replyContent);
+
+    const replyEvent = {
+      pubkey: publicKey,
+      created_at: Math.floor(Date.now() / 1000),
+      kind: 1,
+      tags: [['e', event.id], ['p', event.pubkey]],
+      content: replyContent
+    };
+
+    const signedReply = await getSignedEvent(replyEvent, privateKey);
+    if (!signedReply) {
+      console.error('Failed to sign the reply event.');
+      return;
+    }
+
+    ws.send(JSON.stringify(["EVENT", signedReply]));
+    console.log('Reply sent:', signedReply);
   } else {
     console.log(`${new Date().toISOString()} - No content in text note.`);
   }
 }
 
-
 async function processDirectMessage(event) {
   console.log("Processing event:", event);
   if (event.kind !== 4) {
-      console.error('Not a direct message:', event);
-      return;
+    console.error('Not a direct message:', event);
+    return;
   }
 
   console.log("Received content:", event.content);
   const [encryptedMessage, ivBase64] = event.content.split('?iv=');
   if (encryptedMessage && ivBase64) {
-      console.log("Encrypted message:", encryptedMessage);
-      console.log("IV (base64):", ivBase64);
+    console.log("Encrypted message:", encryptedMessage);
+    console.log("IV (base64):", ivBase64);
 
-      const iv = Buffer.from(ivBase64, 'base64');
-      if (iv.length !== 16) {
-          console.error("Invalid IV length: " + iv.length + " bytes. Must be exactly 16 bytes.");
-          return;
-      }
-
-      try {
-          let sharedSecret = getSharedSecret(privateKey, '02' + event.pubkey);
-          if (typeof sharedSecret === 'string') {
-              sharedSecret = Buffer.from(sharedSecret, 'hex');  // Convert from hex string if necessary
-          }
-
-          console.log("Shared secret (Buffer):", sharedSecret.toString('hex'));
-          const encryptionKey = Buffer.from(sharedSecret.slice(1, 33)); // Use only the X coordinate
-          console.log("Encryption key (Buffer):", encryptionKey.toString('hex'));
-          console.log("Extracted pubkey:", event.pubkey);
-
-          const decipher = createDecipheriv('aes-256-cbc', encryptionKey, iv);
-          let decryptedMessage = decipher.update(encryptedMessage, 'base64', 'binary');
-          decryptedMessage += decipher.final('binary');
-
-          console.log("Decrypted message (Buffer):", decryptedMessage);
-          const decryptedText = decryptedMessage.toString('utf8');
-          console.log("Decrypted message (text):", decryptedText);
-
-          // Prepare the message for Ollama
-          const messages = [{ role: "user", content: decryptedText }];
-          const ollamaResponse = await sendMessageToOllama(messages);
-          console.log("Ollama response received:", ollamaResponse);
-    
-          // Verify response structure and extract the content appropriately
-          const replyContent = typeof ollamaResponse === 'string' ? ollamaResponse : "No response generated.";
-          console.log("Formatted reply content:", replyContent);
-              
-          const replyEvent = {
-            pubkey: publicKey, // Your bot's public key
-            created_at: Math.floor(Date.now() / 1000),
-            kind: 4,
-            tags: [['p', event.pubkey]], // Set the recipient's public key here
-            content: replyContent
-          };
-          
-          const signedReply = await getSignedEvent(replyEvent, privateKey);
-          if (!signedReply) {
-            console.error('Failed to sign the reply event.');
-            return;
-          }
-    
-          ws.send(JSON.stringify(["EVENT", signedReply]));
-          console.log('Reply sent:', signedReply);
-        } catch (error) {
-          console.error("Error decrypting message or communicating with Ollama:", error);
-        }
-      } else {
-        console.error('Missing encrypted message or IV in the expected format.');
-        console.error('Expected format: "<encrypted_text>?iv=<initialization_vector>"');
-        console.error('Received content:', event.content);
-      }
+    const iv = Buffer.from(ivBase64, 'base64');
+    if (iv.length !== 16) {
+      console.error("Invalid IV length: " + iv.length + " bytes. Must be exactly 16 bytes.");
+      return;
     }
-        
 
+    try {
+      let sharedSecret = getSharedSecret(privateKey, '02' + event.pubkey);
+      if (typeof sharedSecret === 'string') {
+        sharedSecret = Buffer.from(sharedSecret, 'hex');
+      }
 
+      console.log("Shared secret (Buffer):", sharedSecret.toString('hex'));
+      const encryptionKey = Buffer.from(sharedSecret.slice(1, 33));
+      console.log("Encryption key (Buffer):", encryptionKey.toString('hex'));
+      console.log("Extracted pubkey:", event.pubkey);
+
+      const decipher = createDecipheriv('aes-256-cbc', encryptionKey, iv);
+      let decryptedMessage = decipher.update(encryptedMessage, 'base64', 'binary');
+      decryptedMessage += decipher.final('binary');
+
+      console.log("Decrypted message (Buffer):", decryptedMessage);
+      const decryptedText = decryptedMessage.toString('utf8');
+      console.log("Decrypted message (text):", decryptedText);
+
+      // Prepare the message for Ollama
+      const messages = [{ role: "user", content: decryptedText }];
+      const ollamaResponse = await sendMessageToOllama(messages);
+      console.log("Ollama response received:", ollamaResponse);
+
+      // Verify response structure and extract the content appropriately
+      const replyContent = typeof ollamaResponse === 'string' ? ollamaResponse : "No response generated.";
+      console.log("Formatted reply content:", replyContent);
+
+      const replyEvent = {
+        pubkey: publicKey,
+        created_at: Math.floor(Date.now() / 1000),
+        kind: 4,
+        tags: [['p', event.pubkey]],
+        content: replyContent
+      };
+    
+      const signedReply = await getSignedEvent(replyEvent, privateKey);
+      if (!signedReply) {
+        console.error('Failed to sign the reply event.');
+        return;
+      }
+    
+      ws.send(JSON.stringify(["EVENT", signedReply]));
+      console.log('Reply sent:', signedReply);
+        } catch (error) {
+      console.error("Error decrypting message or communicating with Ollama:", error);
+    }
+  } else {
+    console.error('Missing encrypted message or IV in the expected format.');
+    console.error('Expected format: "<encrypted_text>?iv=<initialization_vector>"');
+    console.error('Received content:', event.content);
+  }
+}
 async function sendMessageToOllama(messages) {
   const body = {
-    model: "sofs",
+    model: "dolphin-llama3:8b-v2.9-q8_0",
     prompt: messages.map(msg => msg.content).join(" "),
     stream: false
   };

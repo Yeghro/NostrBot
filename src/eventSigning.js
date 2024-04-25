@@ -1,5 +1,6 @@
 import { finalizeEvent } from 'nostr-tools/pure';
 
+
 export async function getSignedEvent(event, privateKey) {
   try {
     if (!event || !privateKey) {

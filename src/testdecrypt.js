@@ -1,18 +1,31 @@
-import crypto from "crypto";
+import {publicKey, privateKey} from "./configs.js";
+import { encrypt, decrypt } from "./encryption.js";
+import { bytesToHex, randomBytes } from '@noble/hashes/utils';
 
-function testEncryptionDecryption() {
-    const key = crypto.randomBytes(32); // Ensure the key is appropriate for AES-256
-    const iv = crypto.randomBytes(16); // Correct size for AES CBC IV
-    const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
-    const text = 'Test message!';
-    let encrypted = cipher.update(text, 'utf8', 'base64');
-    encrypted += cipher.final('base64');
+const hex = hexConverter(new Uint8Array([1, 2, 3]));
 
-    const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
-    let decrypted = decipher.update(encrypted, 'base64', 'utf8');
-    decrypted += decipher.final('utf8');
-
-    console.log('Decrypted:', decrypted); // This should log 'Test message!'
-}
-
-testEncryptionDecryption();
+async function testEncryptionDecryption() {
+    const secretKey = privateKey;  // Replace with actual private key
+    const pubkey = publicKey;    // Replace with actual public key
+    const message = "Hello, this is a test message!";
+  
+    try {
+      const encryptedMessage = await encrypt(secretKey, pubkey, message);
+      console.log("Encrypted Message:", encryptedMessage);
+  
+      // Assume decrypt function is similar to the encrypt function's counterpart
+      const decryptedMessage = await decrypt(secretKey, pubkey, encryptedMessage);
+      console.log("Decrypted Message:", decryptedMessage);
+  
+      if (message === decryptedMessage) {
+        console.log("Test passed: The decrypted message matches the original");
+      } else {
+        console.log("Test failed: The decrypted message does not match the original");
+      }
+    } catch (error) {
+      console.error("Test failed with error:", error);
+    }
+  }
+  
+  testEncryptionDecryption();
+  

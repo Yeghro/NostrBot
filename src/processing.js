@@ -1,6 +1,6 @@
 
 import { sendMessageToOllama } from './ollamaReq.js';
-import { publicKey, privateKey } from './configs.js';
+import { publicKey, privateKey, botRole } from './configs.js';
 import { getSignedEvent } from './eventSigning.js';
 import { ws } from './nostrClient.js';
 import { getSharedSecret } from 'noble-secp256k1';
@@ -8,21 +8,31 @@ import {createDecipheriv} from 'crypto';
 
 
 
+const chatContexts = {};
 
 export async function processTextNote(event) {
     if (event.content) {
       console.log(`${new Date().toISOString()} - Received text note:`, event.content);
+
+      let currentChatContext = chatContexts[event.id] || "";
   
       // Prepare the message for Ollama
       const messages = [{ role: "user", content: event.content }];
   
       try {
         // Call the sendMessageToOllama function and await the response
-        const ollamaResponse = await sendMessageToOllama(messages);
+        const ollamaResponse = await sendMessageToOllama(messages, currentChatContext);
         console.log("Ollama response received:", ollamaResponse);
   
+        // Update the context with the new value from the response
+        chatContexts[event.id] = ollamaResponse.newContext;
+        console.log(chatContexts);
+
         // Verify response structure and extract the content appropriately
-        const replyContent = typeof ollamaResponse === 'string' ? ollamaResponse : "No response generated.";
+        const replyContent = typeof ollamaResponse === 'object' && ollamaResponse.hasOwnProperty('replyContent')
+        ? ollamaResponse.replyContent
+        : "No response generated.";
+        
         console.log("Formatted reply content:", replyContent);
   
         const replyEvent = {
@@ -90,7 +100,8 @@ export async function processDirectMessage(event) {
             console.log("Decrypted message (text):", decryptedText);
   
             // Prepare the message for Ollama
-            const messages = [{ role: "user", content: decryptedText }];
+            const messages = [{ role: botRole, content: decryptedText }];
+            console.log("Role of Bot:", botRole);
             const ollamaResponse = await sendMessageToOllama(messages);
             console.log("Ollama response received:", ollamaResponse);
   

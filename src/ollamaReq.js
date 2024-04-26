@@ -1,12 +1,13 @@
-export async function sendMessageToOllama(messages) {
+export async function sendMessageToOllama(messages, context) {
     const body = {
       model: "yeghro/sofs",
-      prompt: messages.map(msg => msg.content).join(" "),
-      stream: false
+      messages: messages,
+      stream: false,
+      context: context
     };
   
     try {
-      const response = await fetch("http://localhost:11434/api/generate", {
+      const response = await fetch("http://localhost:11434/api/chat", {
         method: "POST",
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
@@ -20,17 +21,16 @@ export async function sendMessageToOllama(messages) {
       console.log("Full Ollama API Response:", JSON.stringify(responseData, null, 2));
   
       // Check if the response has the expected structure
-      if (responseData.hasOwnProperty("response")) {
-        const replyContent = responseData.response;
+      if (responseData.hasOwnProperty("message") && responseData.message.hasOwnProperty("content")) {
+        const replyContent = responseData.message.content;
         console.log("Formatted reply content:", replyContent);
-        return replyContent;
+        return { replyContent, newContext: context };
       } else {
         console.error("Unexpected response structure from Ollama API:", responseData);
-        return "No response generated.";
+        return { replyContent: "No response generated.", newContext: context };
       }
     } catch (error) {
       console.error("Failed to send message to Ollama API:", error);
       throw error;
     }
   }
-  

@@ -1,22 +1,12 @@
 import WebSocket from 'ws';
 import crypto from 'crypto'; // For UUID generation
-import { publicKey } from './configs.js';
 import fetch from 'node-fetch';
 import { processDirectMessage, processTextNote } from './processing.js';
+import { publicKey } from './configs.js';
 
 export let ws; // WebSocket connection
 
 let startTime;  // Store the start time at a scope accessible by the ws.on('message') handler
-
-function sendSubscription() {
-  // Adjust start time to 5 seconds before the current time to catch any events that occur during connection setup
-  startTime = Math.floor(Date.now() / 1000) - 5;
-  const subscriptionId = crypto.randomUUID();
-  const subscription = ["REQ", subscriptionId, { kinds: [4,1] }];  // Subscribe to kind 4 and 1 events
-  ws.send(JSON.stringify(subscription));
-  console.log(`${new Date().toISOString()} - Subscription message sent with adjusted start time:`, startTime);
-}
-
 
 let reconnectionAttempts = 0;
 
@@ -56,6 +46,15 @@ export function connectWebSocket() {
     });
 }
 
+function sendSubscription() {
+  // Adjust start time to 5 seconds before the current time to catch any events that occur during connection setup
+  startTime = Math.floor(Date.now() / 1000) - 5;
+  const subscriptionId = crypto.randomUUID();
+  const subscription = ["REQ", subscriptionId, { kinds: [4,1] }];  // Subscribe to kind 4 and 1 events
+  ws.send(JSON.stringify(subscription));
+  console.log(`${new Date().toISOString()} - Subscription message sent with adjusted start time:`, startTime);
+}
+
 function attemptReconnect() {
     reconnectionAttempts++;
     const reconnectDelay = Math.min(30000, (2 ** reconnectionAttempts) * 1000); // Delay grows exponentially but caps at 30 seconds
@@ -63,14 +62,11 @@ function attemptReconnect() {
     setTimeout(connectWebSocket, reconnectDelay);
 }
 
-
 function isLikelyJson(data) {
   let trimmedData = data.trim();
   return (trimmedData.startsWith('{') && trimmedData.endsWith('}')) ||
          (trimmedData.startsWith('[') && trimmedData.endsWith(']'));
 }
-
-
 
 function handleEvent(data) {
   let event;
@@ -102,6 +98,8 @@ function handleEvent(data) {
   }
 }
 
+let keyWords = [""];
+
 function processEvent(event) {
   //console.log(`${new Date().toISOString()} - Processing event:`, event);
 
@@ -109,10 +107,11 @@ function processEvent(event) {
   if (Array.isArray(event.tags)) {
     // Find 'p' tag that matches the bot's public key
     const pTag = event.tags.find(tag => Array.isArray(tag) && tag[0] === 'p' && tag[1] === publicKey);
+    const tTag = event.tags.find(tag => Array.isArray(tag) && tag[0] === 't' && keyWords.includes(tag[1]));
     console.log("Checking tags", event.tags);
     console.log("Public key used for checking", publicKey);
 
-    if (pTag) {
+    if (pTag || tTag) {
       console.log(`${new Date().toISOString()} - Event with our pubkey found:`, event);
       switch (event.kind) {
         case 1:
@@ -134,4 +133,3 @@ function processEvent(event) {
 
 
 
-connectWebSocket();

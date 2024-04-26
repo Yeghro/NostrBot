@@ -9,4 +9,3 @@ if (!publicKey) {
 export const privateKey = process.env.PRIVATE_KEY;
 console.log('Bot starting with public key:', publicKey);
 
-export const botRole = process.env.ollamaRole;

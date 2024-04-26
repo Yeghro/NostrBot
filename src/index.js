@@ -1,6 +1,5 @@
-import {publicKey, privateKey, botRole} from "./configs.js"
-import { connectWebSocket } from "./nostrClient.js";
+ import { connectWebSocket } from "./nostrClient.js";
 
-console.log('Starting NostrBot');
+ console.log('Starting NostrBot');
 
 connectWebSocket();

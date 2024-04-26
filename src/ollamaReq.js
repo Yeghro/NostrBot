@@ -1,6 +1,6 @@
 export async function sendMessageToOllama(messages, context) {
     const body = {
-      model: "yeghro/sofs",
+      model: "dolphin-llama3:latest",
       messages: messages,
       stream: false,
       context: context

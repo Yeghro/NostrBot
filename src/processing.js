@@ -1,6 +1,6 @@
 
 import { sendMessageToOllama } from './ollamaReq.js';
-import { publicKey, privateKey, botRole } from './configs.js';
+import { publicKey, privateKey } from './configs.js';
 import { getSignedEvent } from './eventSigning.js';
 import { ws } from './nostrClient.js';
 import { getSharedSecret } from 'noble-secp256k1';
@@ -100,8 +100,7 @@ export async function processDirectMessage(event) {
             console.log("Decrypted message (text):", decryptedText);
   
             // Prepare the message for Ollama
-            const messages = [{ role: botRole, content: decryptedText }];
-            console.log("Role of Bot:", botRole);
+            const messages = [{ role: 'user', content: decryptedText }];
             const ollamaResponse = await sendMessageToOllama(messages);
             console.log("Ollama response received:", ollamaResponse);
   

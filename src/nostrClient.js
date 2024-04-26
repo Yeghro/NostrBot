@@ -3,6 +3,7 @@ import crypto from 'crypto'; // For UUID generation
 import fetch from 'node-fetch';
 import { processDirectMessage, processTextNote } from './processing.js';
 import { publicKey } from './configs.js';
+import { fetchImages } from './imageFetch.js';
 
 export let ws; // WebSocket connection
 
@@ -11,7 +12,7 @@ let startTime;  // Store the start time at a scope accessible by the ws.on('mess
 let reconnectionAttempts = 0;
 
 export function connectWebSocket() {
-    ws = new WebSocket('wss://nostrpub.yeghro.site');
+    ws = new WebSocket('wss://relay.primal.net');
 
     ws.on('open', () => {
         console.log(`${new Date().toISOString()} - Connected to the relay`);
@@ -74,7 +75,7 @@ function handleEvent(data) {
     if (isLikelyJson(data)) {
       try {
         event = JSON.parse(data);
-        console.log(`${new Date().toISOString()} - Parsed event JSON:`, event);
+        //console.log(`${new Date().toISOString()} - Parsed event JSON:`, event);
       } catch (error) {
         console.error(`${new Date().toISOString()} - Error parsing JSON:`, error);
         return;
@@ -98,38 +99,41 @@ function handleEvent(data) {
   }
 }
 
-let keyWords = [""];
+let keyWords = ["askYEGHRO"];
 
 function processEvent(event) {
-  //console.log(`${new Date().toISOString()} - Processing event:`, event);
-
-  // Check if tags exist and ensure they are an array
   if (Array.isArray(event.tags)) {
-    // Find 'p' tag that matches the bot's public key
     const pTag = event.tags.find(tag => Array.isArray(tag) && tag[0] === 'p' && tag[1] === publicKey);
     const tTag = event.tags.find(tag => Array.isArray(tag) && tag[0] === 't' && keyWords.includes(tag[1]));
     console.log("Checking tags", event.tags);
     console.log("Public key used for checking", publicKey);
 
     if (pTag || tTag) {
-      console.log(`${new Date().toISOString()} - Event with our pubkey found:`, event);
-      switch (event.kind) {
-        case 1:
+      console.log(`${new Date().toISOString()} - Event with keyword or pubkey found:`, event);
+      if (event.kind === 1) {
+        if (event.content.includes("/GetImages")) {
+          const matches = event.content.match(/\/GetImages\s+"([^"]+)"/);
+          if (matches && matches[1]) {
+            const requestedPubkey = matches[1].trim();
+            fetchImages(event, requestedPubkey);
+            return;
+          } else {
+            console.log('Invalid /GetImages command format. Usage: /GetImages "pubkey"');
+          }
+        } else {
           processTextNote(event);
-          break;
-        case 4:
-          processDirectMessage(event);
-          break;
-        default:
-          console.log(`${new Date().toISOString()} - Unsupported event kind:`, event.kind);
+        }
+      } else if (event.kind === 4) {
+        processDirectMessage(event);
+      } else {
+        console.log(`${new Date().toISOString()} - Unsupported event kind:`, event.kind);
       }
     } else {
-      //console.log(`${new Date().toISOString()} - Event does not include our pubkey in tags, skipping.`);
+      //console.log(`${new Date().toISOString()} - Event does not include our pubkey or keyword in tags, skipping.`);
     }
   } else {
     console.error(`${new Date().toISOString()} - Malformed tags in event:`, event);
   }
 }
-
 
 

@@ -12,7 +12,7 @@ let startTime;  // Store the start time at a scope accessible by the ws.on('mess
 let reconnectionAttempts = 0;
 
 export function connectWebSocket() {
-    ws = new WebSocket('wss://relay.primal.net');
+    ws = new WebSocket('wss://nostrpub.yeghro.site');
 
     ws.on('open', () => {
         console.log(`${new Date().toISOString()} - Connected to the relay`);
@@ -116,7 +116,6 @@ function processEvent(event) {
           if (matches && matches[1]) {
             const requestedPubkey = matches[1].trim();
             fetchImages(event, requestedPubkey);
-            return;
           } else {
             console.log('Invalid /GetImages command format. Usage: /GetImages "pubkey"');
           }

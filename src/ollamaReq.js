@@ -1,9 +1,8 @@
-export async function sendMessageToOllama(messages, context) {
+export async function sendMessageToOllama(messages) {
     const body = {
-      model: "dolphin-llama3:latest",
+      model: "dolphincoder:latest",
       messages: messages,
       stream: false,
-      context: context
     };
   
     try {
@@ -24,10 +23,10 @@ export async function sendMessageToOllama(messages, context) {
       if (responseData.hasOwnProperty("message") && responseData.message.hasOwnProperty("content")) {
         const replyContent = responseData.message.content;
         console.log("Formatted reply content:", replyContent);
-        return { replyContent, newContext: context };
+        return { replyContent };
       } else {
         console.error("Unexpected response structure from Ollama API:", responseData);
-        return { replyContent: "No response generated.", newContext: context };
+        return { replyContent: "No response generated." };
       }
     } catch (error) {
       console.error("Failed to send message to Ollama API:", error);

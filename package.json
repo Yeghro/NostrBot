@@ -12,12 +12,14 @@
   "license": "ISC",
   "dependencies": {
     "@noble/hashes": "^1.4.0",
+    "base-64": "^1.0.0",
     "browserify-cipher": "^1.0.1",
     "dotenv": "^16.4.5",
     "noble-hashes": "^0.3.1",
     "noble-secp256k1": "^1.2.14",
     "node-fetch": "^3.3.2",
     "nostr-tools": "^2.5.0",
+    "nostr-wasm": "^0.1.0",
     "ollama-node": "^0.1.28",
     "secp256k1": "^5.0.0",
     "ws": "^8.16.0"

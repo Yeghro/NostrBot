@@ -4,9 +4,8 @@ import { publicKey, privateKey } from './configs.js';
 import { getSignedEvent } from './eventSigning.js';
 import { ws } from './nostrClient.js';
 import { getSharedSecret } from 'noble-secp256k1';
-import {createDecipheriv} from 'crypto'; 
-
-
+import { createDecipheriv } from 'crypto'; 
+import { encrypt } from 'nostr-tools/nip04';
 
 const chatContexts = {};
 
@@ -104,15 +103,20 @@ export async function processDirectMessage(event) {
             const ollamaResponse = await sendMessageToOllama(messages);
             console.log("Ollama response received:", ollamaResponse);
   
-            const replyContent = typeof ollamaResponse === 'string' ? ollamaResponse : "No response generated.";
-            console.log("Formatted reply content:", replyContent);
-  
+            const replyContent = typeof ollamaResponse === 'object' && ollamaResponse.hasOwnProperty('replyContent')
+            ? ollamaResponse.replyContent
+            : "No response generated.";
+            let pubkey = event.pubkey;
+            // Encrypt the reply content before sending
+            const encryptedReplyContent = await encrypt(privateKey, pubkey, replyContent);
+      
+      
             const replyEvent = {
                 pubkey: publicKey,
                 created_at: Math.floor(Date.now() / 1000),
                 kind: 4,
                 tags: [['p', event.pubkey]],
-                content: replyContent
+                content: encryptedReplyContent
             };
         
             const signedReply = await getSignedEvent(replyEvent, privateKey);

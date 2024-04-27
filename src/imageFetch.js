@@ -1,37 +1,16 @@
 import { ws } from "./nostrClient.js";
-import { privateKey, publicKey } from "./configs.js";
-import { getSignedEvent } from "./eventSigning.js";
-export async function fetchImages(event, requestedPubkey) {
-    try {
-      const imageEvents = await fetchImageEvents(requestedPubkey);
-      const imageUrls = extractImageUrls(imageEvents);
-      console.log('URLs Found:', imageUrls)
-  
-      const replyContent = imageUrls.length > 0
-        ? `Here are the images associated with pubkey ${requestedPubkey}:\n\n${imageUrls.join('\n')}`
-        : `No images found for pubkey ${requestedPubkey}.`;
-  
-      const replyEvent = {
-        pubkey: publicKey,
-        created_at: Math.floor(Date.now() / 1000),
-        kind: 1,
-        tags: [['e', event.id], ['p', event.pubkey]],
-        content: replyContent
-      };
-  
-      const signedReply = await getSignedEvent(replyEvent, privateKey);
-      if (!signedReply) {
-        console.error('Failed to sign the reply event.');
-        return;
-      }
-  
-      ws.send(JSON.stringify(["EVENT", signedReply]));
-      console.log('Reply sent:', signedReply);
-    } catch (error) {
-      console.error('Error occurred while fetching images:', error);
-    }
+export async function fetchImages(requestedPubkey) {
+  try {
+    const imageEvents = await fetchImageEvents(requestedPubkey);
+    const imageUrls = extractImageUrls(imageEvents);
+    console.log('URLs Found:', imageUrls);
+
+    return imageUrls;
+  } catch (error) {
+    console.error('Error occurred while fetching images:', error);
+    return [];
   }
-  
+}  
   async function fetchImageEvents(pubkey) {
     return new Promise((resolve, reject) => {
       const subscription = ["REQ", crypto.randomUUID(), {

@@ -1,8 +1,8 @@
 import WebSocket from 'ws';
 import crypto from 'crypto'; // For UUID generation
-import fetch from 'node-fetch';
+import { decrypt } from 'nostr-tools/nip04';
 import { processDirectMessage, processTextNote } from './processing.js';
-import { publicKey } from './configs.js';
+import { publicKey, privateKey } from './configs.js';
 import { fetchImages } from './imageFetch.js';
 
 export let ws; // WebSocket connection
@@ -101,7 +101,7 @@ function handleEvent(data) {
 
 let keyWords = ["askYEGHRO"];
 
-function processEvent(event) {
+async function processEvent(event) {
   if (Array.isArray(event.tags)) {
     const pTag = event.tags.find(tag => Array.isArray(tag) && tag[0] === 'p' && tag[1] === publicKey);
     const tTag = event.tags.find(tag => Array.isArray(tag) && tag[0] === 't' && keyWords.includes(tag[1]));
@@ -110,20 +110,34 @@ function processEvent(event) {
 
     if (pTag || tTag) {
       console.log(`${new Date().toISOString()} - Event with keyword or pubkey found:`, event);
-      if (event.kind === 1) {
-        if (event.content.includes("/GetImages")) {
-          const matches = event.content.match(/\/GetImages\s+"([^"]+)"/);
+      if (event.kind === 1 || 4) {
+        let content = event.content;
+        let pubkey = event.pubkey;
+    
+        if (event.kind === 4) {
+          content = await decrypt(privateKey, pubkey, event.content);
+        }
+    
+        if (content.includes("/GetImages")) {
+          const matches = content.match(/\/GetImages\s+"([^"]+)"/);
           if (matches && matches[1]) {
             const requestedPubkey = matches[1].trim();
-            fetchImages(event, requestedPubkey);
+            const imageUrls = await fetchImages(requestedPubkey);
+            if (event.kind === 1) {
+              processTextNote(event, imageUrls);
+            } else if (event.kind === 4) {
+              processDirectMessage(event, imageUrls, content, pubkey);
+            }
           } else {
             console.log('Invalid /GetImages command format. Usage: /GetImages "pubkey"');
           }
         } else {
-          processTextNote(event);
+          if (event.kind === 1) {
+            processTextNote(event);
+          } else if (event.kind === 4) {
+            processDirectMessage(event, [], content, pubkey);
+          }
         }
-      } else if (event.kind === 4) {
-        processDirectMessage(event);
       } else {
         console.log(`${new Date().toISOString()} - Unsupported event kind:`, event.kind);
       }
@@ -134,5 +148,3 @@ function processEvent(event) {
     console.error(`${new Date().toISOString()} - Malformed tags in event:`, event);
   }
 }
-
-

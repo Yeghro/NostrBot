@@ -1,6 +1,6 @@
 export async function sendMessageToOllama(messages) {
     const body = {
-      model: "dolphincoder:latest",
+      model: "llama3",
       messages: messages,
       stream: false,
     };

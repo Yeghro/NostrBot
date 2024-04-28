@@ -128,9 +128,9 @@ async function processEvent(event) {
             const endDate = matches[3] ? matches[3].trim() : null;
             const requestedNotes = await fetchNotes(requestedPubkey, startDate, endDate);
             if (event.kind === 1) {
-              processTextNote(event, requestedNotes);
+              processTextNote(event, { requestedPubkey, startDate, endDate, requestedNotes });
             } else if (event.kind === 4) {
-              processDirectMessage(event, pubkey, [], content, requestedNotes, requestedPubkey);
+              processDirectMessage(event, { pubkey, content, requestedNotes, requestedPubkey });
             }
           }
         } else if (content.includes("/GetImages")) {
@@ -142,10 +142,11 @@ async function processEvent(event) {
             console.log('Images Requested for:', requestedPubkey);
             const imageUrls = await fetchImages(requestedPubkey, startDate, endDate);
             if (event.kind === 1) {
-              processTextNote(event, imageUrls, requestedPubkey, startDate, endDate);
+              processTextNote(event, { requestedPubkey, startDate, endDate, imageUrls });
             } else if (event.kind === 4) {
-              processDirectMessage(event, pubkey, content, imageUrls, startDate, endDate, requestedPubkey);
+              processDirectMessage(event, { pubkey, content, imageUrls, requestedPubkey });
             }
+      
           } else {
             console.log('Invalid /GetImages command format. Usage: /GetImages "pubkey" ["startDate"] ["endDate"]');
           }

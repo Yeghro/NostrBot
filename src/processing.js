@@ -5,41 +5,36 @@ import { getSignedEvent } from './eventSigning.js';
 import { ws } from './nostrClient.js';
 import { encrypt } from 'nostr-tools/nip04';
 
-const chatContexts = {};
+export async function processTextNote(event, data) {
+  const { requestedPubkey, startDate, endDate, requestedNotes, imageUrls } = data;
 
-export async function processTextNote(event, requestedNotes, imageUrls, requestedPubkey) {
   if (event.content) {
     console.log(`${new Date().toISOString()} - Received text note:`, event.content);
   }
-  
+
   let replyContent;
-
-  if (event.content.includes("/GetNotes")) {
-    if (requestedNotes && requestedNotes.length > 0) {
-      replyContent = `Here are the notes associated with pubkey ${requestedPubkey}:\n${requestedNotes.join('\n')}`;
-    } else {
-      replyContent = `No notes found for pubkey ${requestedPubkey}.`;
-    }
-  } else if (event.content.includes("/GetImages")) {
-    if (imageUrls && imageUrls.length > 0) {
-      replyContent = `Here are the images associated with pubkey ${requestedPubkey}:\n${imageUrls.join('\n')}`;
-    } else {
-      replyContent = `No images found for pubkey ${requestedPubkey}.`;
-    }
+  if (imageUrls && imageUrls.length > 0) {
+    replyContent = `Here are the images associated with pubkey ${requestedPubkey}:\n${imageUrls.join('\n')}`;
+  } else if (Array.isArray(requestedNotes) && requestedNotes.length > 0) {
+    replyContent = `Here are the notes associated with pubkey ${requestedPubkey}:\n${requestedNotes.join('\n')}`;
   } else {
-    // If neither /GetNotes nor /GetImages command is found, send the message to Ollama
-    // Prepare the message for Ollama
-    const messages = [{ role: "user", content: event.content }];
+    if (requestedNotes === "No images found") {
+      replyContent = "No notes found for the specified pubkey and date range.";
+    } else if (requestedNotes && requestedNotes.length === 0) {
+      replyContent = "No notes found for the specified pubkey and date range.";
+    } else {
+      // If neither images nor notes are found, send the message to Ollama
+      const messages = [{ role: "user", content: event.content }];
 
+      // Call the sendMessageToOllama function and await the response
+      const ollamaResponse = await sendMessageToOllama(messages);
+      console.log("Ollama response received:", ollamaResponse);
 
-    // Call the sendMessageToOllama function and await the response
-    const ollamaResponse = await sendMessageToOllama(messages);
-    console.log("Ollama response received:", ollamaResponse);
-
-    // Verify response structure and extract the content appropriately
-    replyContent = typeof ollamaResponse === 'object' && ollamaResponse.hasOwnProperty('replyContent')
-      ? ollamaResponse.replyContent
-      : "No response generated.";
+      // Verify response structure and extract the content appropriately
+      replyContent = typeof ollamaResponse === 'object' && ollamaResponse.hasOwnProperty('replyContent')
+        ? ollamaResponse.replyContent
+        : "No response generated.";
+    }
   }
   console.log("Formatted reply content:", replyContent);
 
@@ -60,7 +55,9 @@ export async function processTextNote(event, requestedNotes, imageUrls, requeste
   ws.send(JSON.stringify(["EVENT", signedReply]));
   console.log('Reply sent:', signedReply);
 }
-export async function processDirectMessage(event, pubkey, content, requestedNotes, imageUrls, requestedPubkey) {
+export async function processDirectMessage(event, data) {
+  const { pubkey, content, requestedNotes, requestedPubkey, imageUrls } = data;
+
   console.log("Processing event:", event);
   console.log("Processing: requestedPubkey:", requestedPubkey);
   if (event.kind !== 4) {
@@ -68,8 +65,8 @@ export async function processDirectMessage(event, pubkey, content, requestedNote
     return;
   }
   let replyContent;
-  if (imageUrls.length > 0) {
-    replyContent = `Here are the images associated with pubkey ${requestedPubkey}:\n${imageUrls.join('\n')}`;
+  if (imageUrls && imageUrls.length > 0) {
+    replyContent = `Here are the images associated with pubkey ${requestedPubkey}:\n${imageUrls.join('\n')}`;  
   } else if (Array.isArray(requestedNotes) && requestedNotes.length > 0) {
     replyContent = `Here are the notes associated with pubkey ${requestedPubkey}:\n${requestedNotes.join('\n')}`;
   } else {

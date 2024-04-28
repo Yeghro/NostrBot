@@ -1,0 +1,14 @@
+fetch notes request format:
+The regular expression in the processEvent function now uses non-capturing groups (?:...) to make the date range optional. The /GetNotes command can now be used in the following formats:
+
+/GetNotes "pubkey": Fetches notes for the specified pubkey without any date range.
+/GetNotes "pubkey" "startDate": Fetches notes for the specified pubkey starting from the startDate.
+/GetNotes "pubkey" "startDate" "endDate": Fetches notes for the specified pubkey within the date range from startDate to endDate.
+
+
+For example:
+
+/GetNotes "pubkey": Fetches all notes for the specified pubkey.
+/GetNotes "pubkey" "2023-01-01": Fetches notes for the specified pubkey starting from January 1, 2023.
+/GetNotes "pubkey" "2023-01-01" "2023-12-31": Fetches notes for the specified pubkey within the date range from January 1, 2023, to December 31, 2023.
+

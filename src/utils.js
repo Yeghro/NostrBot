@@ -1,9 +1,21 @@
+import { nip19 } from 'nostr-tools';
+
+
 export function hexToBytes(hex) {
   const bytes = [];
   for (let i = 0; i < hex.length; i += 2) {
       bytes.push(parseInt(hex.substring(i, i + 2), 16));
   }
   return Buffer.from(bytes);
+}
+
+function decodeNpub(npub) {
+  const { type, data } = nip19.decode(npub);
+  if (type === 'npub') {
+    return data;
+  } else {
+    throw new Error('Invalid npub');
+  }
 }
   
 export function bytesToHex(bytes) {

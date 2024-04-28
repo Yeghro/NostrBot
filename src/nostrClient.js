@@ -13,7 +13,7 @@ let startTime;  // Store the start time at a scope accessible by the ws.on('mess
 let reconnectionAttempts = 0;
 
 export function connectWebSocket() {
-    ws = new WebSocket('wss://nostrpub.yeghro.site');
+    ws = new WebSocket('wss://relay.primal.net');
 
     ws.on('open', () => {
         console.log(`${new Date().toISOString()} - Connected to the relay`);
@@ -111,7 +111,6 @@ async function processEvent(event) {
 
     if (pTag || tTag) {
       console.log(`${new Date().toISOString()} - Event with keyword or pubkey found:`, event);
-
       let content = event.content;
       let pubkey = event.pubkey;
 
@@ -120,12 +119,12 @@ async function processEvent(event) {
       }
 
       if (event.kind === 1 || event.kind === 4) {
-        if (content.includes("/GetNotes")) {
-          const matches = content.match(/\/GetNotes\s+"([^"]+)"(?:\s+"([^"]+)")?(?:\s+"([^"]+)")?/);
-          if (matches && matches[1]) {
-            const requestedPubkey = matches[1].trim();
-            const startDate = matches[2] ? matches[2].trim() : null;
-            const endDate = matches[3] ? matches[3].trim() : null;
+        if (content.match(/\/(GetNotes|getnotes)/i)) {
+          const matches = content.match(/\/(GetNotes|getnotes)\s+"([^"]+)"(?:\s+"([^"]+)")?(?:\s+"([^"]+)")?/i);
+          if (matches && matches[2]) {
+            const requestedPubkey = matches[2].trim();
+            const startDate = matches[3] ? matches[3].trim() : null;
+            const endDate = matches[4] ? matches[4].trim() : null;
             const requestedNotes = await fetchNotes(requestedPubkey, startDate, endDate);
             if (event.kind === 1) {
               processTextNote(event, { requestedPubkey, startDate, endDate, requestedNotes });
@@ -133,12 +132,12 @@ async function processEvent(event) {
               processDirectMessage(event, { pubkey, content, requestedNotes, requestedPubkey });
             }
           }
-        } else if (content.includes("/GetImages")) {
-          const matches = content.match(/\/GetImages\s+"([^"]+)"(?:\s+"([^"]+)")?(?:\s+"([^"]+)")?/);
-          if (matches && matches[1]) {
-            const requestedPubkey = matches[1].trim();
-            const startDate = matches[2] ? matches[2].trim() : null;
-            const endDate = matches[3] ? matches[3].trim() : null;
+        } else if (content.match(/\/(GetImages|getimages)/i)) {
+          const matches = content.match(/\/(GetImages|getimages)\s+"([^"]+)"(?:\s+"([^"]+)")?(?:\s+"([^"]+)")?/i);
+          if (matches && matches[2]) {
+            const requestedPubkey = matches[2].trim();
+            const startDate = matches[3] ? matches[3].trim() : null;
+            const endDate = matches[4] ? matches[4].trim() : null;
             console.log('Images Requested for:', requestedPubkey);
             const imageUrls = await fetchImages(requestedPubkey, startDate, endDate);
             if (event.kind === 1) {
@@ -146,7 +145,6 @@ async function processEvent(event) {
             } else if (event.kind === 4) {
               processDirectMessage(event, { pubkey, content, imageUrls, requestedPubkey });
             }
-      
           } else {
             console.log('Invalid /GetImages command format. Usage: /GetImages "pubkey" ["startDate"] ["endDate"]');
           }

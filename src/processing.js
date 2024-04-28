@@ -65,12 +65,12 @@ export async function processDirectMessage(event, data) {
     return;
   }
   let replyContent;
-  if (imageUrls && imageUrls.length > 0) {
+  if (Array.isArray(imageUrls) && imageUrls.length > 0) {
     replyContent = `Here are the images associated with pubkey ${requestedPubkey}:\n${imageUrls.join('\n')}`;  
   } else if (Array.isArray(requestedNotes) && requestedNotes.length > 0) {
     replyContent = `Here are the notes associated with pubkey ${requestedPubkey}:\n${requestedNotes.join('\n')}`;
   } else {
-    if (requestedNotes === "No images found") {
+    if (imageUrls === "No Images found") {
       replyContent = "No Notes found for the specified pubkey and date range.";
     } else if (requestedNotes && requestedNotes.length === 0) {
       replyContent = "No notes found for the specified pubkey and date range.";

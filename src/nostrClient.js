@@ -130,21 +130,24 @@ async function processEvent(event) {
             if (event.kind === 1) {
               processTextNote(event, requestedNotes);
             } else if (event.kind === 4) {
-              processDirectMessage(event, requestedNotes, content, pubkey);
+              processDirectMessage(event, pubkey, [], content, requestedNotes, requestedPubkey);
             }
           }
         } else if (content.includes("/GetImages")) {
-          const matches = content.match(/\/GetImages\s+"([^"]+)"/);
+          const matches = content.match(/\/GetImages\s+"([^"]+)"(?:\s+"([^"]+)")?(?:\s+"([^"]+)")?/);
           if (matches && matches[1]) {
             const requestedPubkey = matches[1].trim();
-            const imageUrls = await fetchImages(requestedPubkey);
+            const startDate = matches[2] ? matches[2].trim() : null;
+            const endDate = matches[3] ? matches[3].trim() : null;
+            console.log('Images Requested for:', requestedPubkey);
+            const imageUrls = await fetchImages(requestedPubkey, startDate, endDate);
             if (event.kind === 1) {
-              processTextNote(event, [], imageUrls);
+              processTextNote(event, imageUrls, requestedPubkey, startDate, endDate);
             } else if (event.kind === 4) {
-              processDirectMessage(event, [], content, requestedPubkey, imageUrls);
+              processDirectMessage(event, pubkey, content, imageUrls, startDate, endDate, requestedPubkey);
             }
           } else {
-            console.log('Invalid /GetImages command format. Usage: /GetImages "pubkey"');
+            console.log('Invalid /GetImages command format. Usage: /GetImages "pubkey" ["startDate"] ["endDate"]');
           }
         } else {
           if (event.kind === 1) {

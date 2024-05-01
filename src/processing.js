@@ -6,9 +6,9 @@ import { ws } from './nostrClient.js';
 import { encrypt } from 'nostr-tools/nip04';
 
 export async function processTextNote(event, data) {
-  const { requestedPubkey, startDate, endDate, requestedNotes, imageUrls } = data;
+  const { content, pubkey, requestedPubkey, imageUrls } = data;
 
-  if (event.content) {
+  if (content) {
     console.log(`${new Date().toISOString()} - Received text note:`, event.content);
   }
 
@@ -22,20 +22,8 @@ export async function processTextNote(event, data) {
       replyContent = "No notes found for the specified pubkey and date range.";
     } else if (requestedNotes && requestedNotes.length === 0) {
       replyContent = "No notes found for the specified pubkey and date range.";
-    } else {
-      // If neither images nor notes are found, send the message to Ollama
-      const messages = [{ role: "user", content: event.content }];
-
-      // Call the sendMessageToOllama function and await the response
-      const ollamaResponse = await sendMessageToOllama(messages);
-      console.log("Ollama response received:", ollamaResponse);
-
-      // Verify response structure and extract the content appropriately
-      replyContent = typeof ollamaResponse === 'object' && ollamaResponse.hasOwnProperty('replyContent')
-        ? ollamaResponse.replyContent
-        : "No response generated.";
-    }
   }
+}
   console.log("Formatted reply content:", replyContent);
 
   const replyEvent = {
@@ -56,8 +44,7 @@ export async function processTextNote(event, data) {
   console.log('Reply sent:', signedReply);
 }
 export async function processDirectMessage(event, data) {
-  const { pubkey, content, requestedNotes, requestedPubkey, imageUrls } = data;
-
+  const { content, pubkey, requestedNotes, requestedPubkey, imageUrls } = data;
   console.log("Processing event:", event);
   console.log("Processing: requestedPubkey:", requestedPubkey);
   if (event.kind !== 4) {
@@ -66,7 +53,7 @@ export async function processDirectMessage(event, data) {
   }
   let replyContent;
   if (Array.isArray(imageUrls) && imageUrls.length > 0) {
-    replyContent = `Here are the images associated with pubkey ${requestedPubkey}:\n${imageUrls.join('\n')}`;  
+    replyContent = `Here are the images associated with pubkey ${requestedPubkey}:\n${imageUrls.join('\n')}`;
   } else if (Array.isArray(requestedNotes) && requestedNotes.length > 0) {
     replyContent = `Here are the notes associated with pubkey ${requestedPubkey}:\n${requestedNotes.join('\n')}`;
   } else {
@@ -74,24 +61,16 @@ export async function processDirectMessage(event, data) {
       replyContent = "No Notes found for the specified pubkey and date range.";
     } else if (requestedNotes && requestedNotes.length === 0) {
       replyContent = "No notes found for the specified pubkey and date range.";
-    } else {
-      // If neither images nor notes are found, send the message to Ollama
-      const messages = [{ role: 'user', content: content }];
-      const ollamaResponse = await sendMessageToOllama(messages);
-      console.log("Ollama response received:", ollamaResponse);
-      replyContent = typeof ollamaResponse === 'object' && ollamaResponse.hasOwnProperty('replyContent')
-        ? ollamaResponse.replyContent
-        : "No response generated.";
     }
   }
-    // Encrypt the reply content before sending
-    
+  
+  // Encrypt the reply content before sending
   const encryptedReplyContent = await encrypt(privateKey, pubkey, replyContent);
   const replyEvent = {
     pubkey: publicKey,
     created_at: Math.floor(Date.now() / 1000),
     kind: 4,
-    tags: [['p', event.pubkey]],
+    tags: [['p', pubkey]],
     content: encryptedReplyContent
   };
   const signedReply = await getSignedEvent(replyEvent, privateKey);
@@ -101,4 +80,59 @@ export async function processDirectMessage(event, data) {
   }
   ws.send(JSON.stringify(["EVENT", signedReply]));
   console.log('Reply sent:', signedReply);
+}
+export async function processNonCommand(event, data) {
+  let { content, pubkey } = data;
+
+  if (event.kind === 1) {
+    const npubPattern = /nostr:npub1\w+/g;
+    console.log("Content before Npub trimming:", content);
+    content = content.replace(npubPattern, '').trim();
+  }
+  // Send the message to Ollama
+  const messages = [{ role: "user", content: content }];
+  console.log("Content being sent to Ollama:", content);
+  const ollamaResponse = await sendMessageToOllama(messages);
+  console.log("Ollama response received:", ollamaResponse);
+
+  const replyContent = typeof ollamaResponse === 'object' && ollamaResponse.hasOwnProperty('replyContent')
+    ? ollamaResponse.replyContent
+    : "No response generated.";
+
+  if (event.kind === 1) {
+    const replyEvent = {
+      pubkey: publicKey,
+      created_at: Math.floor(Date.now() / 1000),
+      kind: 1,
+      tags: [['e', event.id], ['p', event.pubkey]],
+      content: replyContent
+    };
+
+    const signedReply = await getSignedEvent(replyEvent, privateKey);
+    if (!signedReply) {
+      console.error('Failed to sign the reply event.');
+      return;
+    }
+
+    ws.send(JSON.stringify(["EVENT", signedReply]));
+    console.log('Reply sent:', signedReply);
+  } else if (event.kind === 4) {
+    const encryptedReplyContent = await encrypt(privateKey, pubkey, replyContent);
+    const replyEvent = {
+      pubkey: publicKey,
+      created_at: Math.floor(Date.now() / 1000),
+      kind: 4,
+      tags: [['p', event.pubkey]],
+      content: encryptedReplyContent
+    };
+
+    const signedReply = await getSignedEvent(replyEvent, privateKey);
+    if (!signedReply) {
+      console.error('Failed to sign the reply event.');
+      return;
+    }
+
+    ws.send(JSON.stringify(["EVENT", signedReply]));
+    console.log('Reply sent:', signedReply);
+  }
 }

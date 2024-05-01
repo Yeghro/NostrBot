@@ -1,37 +1,18 @@
 import { ws } from "./nostrClient.js";
-import { nip19 } from "nostr-tools";
+import { decodePubKey } from "./decodeNpub.js";
 export async function fetchNotes(requestedPubkey, startDate, endDate) {
   console.log('Requested Notes From:', requestedPubkey);
 
   try {
-    let pubkeyHex = requestedPubkey;
-
-    if (requestedPubkey.startsWith('npub')) {
-      const { type, data } = nip19.decode(requestedPubkey);
-      if (type === 'npub') {
-        pubkeyHex = data;
-      } else {
-        throw new Error('Invalid npub');
-      }
-    } else if (requestedPubkey.startsWith('nostr:npub')) {
-      const { type, data } = nip19.decode(requestedPubkey.slice(6));
-      if (type === 'npub') {
-        pubkeyHex = data;
-      } else {
-        throw new Error('Invalid nostr:npub');
-      }
-    }
-
+    const pubkeyHex = decodePubKey(requestedPubkey);
     const notesContent = await fetchEventNotes(pubkeyHex, startDate, endDate);
-    const requestedNotes = notesContent;
-    console.log('Notes Found:', requestedNotes);
-    return requestedNotes;
+    console.log('Notes Found:', notesContent);
+    return notesContent;
   } catch (error) {
     console.error('Error occurred while fetching Notes:', error);
     return []; // Return an empty array on error
   }
 }
-
 async function fetchEventNotes(requestedPubkey, startDate, endDate) {
   return new Promise((resolve, reject) => {
     const subscriptionOptions = {

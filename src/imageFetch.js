@@ -1,28 +1,12 @@
 import { ws } from "./nostrClient.js";
-import { nip19 } from "nostr-tools";
-
+import { decodePubKey } from "./decodeNpub.js";
 export async function fetchImages(requestedPubkey, startDate, endDate) {
+  console.log('Requested Images From:', requestedPubkey);
+
   try {
-      let pubkeyHex = requestedPubkey;
-  
-      if (requestedPubkey.startsWith('npub')) {
-        const { type, data } = nip19.decode(requestedPubkey);
-        if (type === 'npub') {
-          pubkeyHex = data;
-        } else {
-          throw new Error('Invalid npub');
-        }
-      } else if (requestedPubkey.startsWith('nostr:npub')) {
-        const { type, data } = nip19.decode(requestedPubkey.slice(6));
-        if (type === 'npub') {
-          pubkeyHex = data;
-        } else {
-          throw new Error('Invalid nostr:npub');
-        }
-      }
-  
-    const imageEvents = await fetchImageEvents(pubkeyHex, startDate, endDate);
-    const imageUrls = extractImageUrls(imageEvents);
+    let pubkeyHex = decodePubKey(requestedPubkey);
+    let imageEvents = await fetchImageEvents(pubkeyHex, startDate, endDate);
+    let imageUrls = extractImageUrls(imageEvents);
     console.log('URLs Found:', imageUrls);
     return imageUrls;
   } catch (error) {

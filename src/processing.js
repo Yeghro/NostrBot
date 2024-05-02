@@ -6,7 +6,7 @@ import { ws } from './nostrClient.js';
 import { encrypt } from 'nostr-tools/nip04';
 
 export async function processTextNote(event, data) {
-  const { content, pubkey, requestedPubkey, imageUrls } = data;
+  const { content, pubkey, requestedPubkey, requestedNotes, imageUrls } = data;
 
   if (content) {
     console.log(`${new Date().toISOString()} - Received text note:`, event.content);
@@ -18,12 +18,17 @@ export async function processTextNote(event, data) {
   } else if (Array.isArray(requestedNotes) && requestedNotes.length > 0) {
     replyContent = `Here are the notes associated with pubkey ${requestedPubkey}:\n${requestedNotes.join('\n')}`;
   } else {
-    if (requestedNotes === "No images found") {
+    if (requestedNotes === "No notes found") {
       replyContent = "No notes found for the specified pubkey and date range.";
-    } else if (requestedNotes && requestedNotes.length === 0) {
-      replyContent = "No notes found for the specified pubkey and date range.";
+    } else if (imageUrls === "No images found") {
+      replyContent = "No images found for the specified pubkey and date range.";
+    } else {
+      replyContent = "No notes or images found for the specified pubkey and date range.";
+    }
   }
-}
+
+  
+
   console.log("Formatted reply content:", replyContent);
 
   const replyEvent = {
@@ -61,8 +66,11 @@ export async function processDirectMessage(event, data) {
       replyContent = "No Notes found for the specified pubkey and date range.";
     } else if (requestedNotes && requestedNotes.length === 0) {
       replyContent = "No notes found for the specified pubkey and date range.";
+    } else {
+      replyContent = "No notes or images found for the specified pubkey and date range.";
     }
   }
+  console.log('content to be sent as replay:',replyContent);
   
   // Encrypt the reply content before sending
   const encryptedReplyContent = await encrypt(privateKey, pubkey, replyContent);

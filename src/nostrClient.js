@@ -119,7 +119,7 @@ async function processEvent(event) {
       }
 
       // Check for specific commands and fetch data accordingly.
-      if (content.match(/\/(GetNotes|getnotes|GetImages|getimages)/i)) {
+      if (content.match(/\/(GetNotes|getnotes)/i)) {
         let matches = content.match(/\/(GetNotes|getnotes)\s+"([^"]+)"(?:\s+"([^"]+)")?(?:\s+"([^"]+)")?/i);
         if (matches) {
           const requestedPubkey = matches[2].trim();
@@ -129,23 +129,31 @@ async function processEvent(event) {
           if (event.kind === 1) {
             processTextNote(event, { content, pubkey, requestedPubkey, requestedNotes });
           } else if (event.kind === 4) {
-            processDirectMessage(event, { content, pubkey, requestedNotes });
+            processDirectMessage(event, { content, pubkey, requestedPubkey, requestedNotes });
           }
         } else {
-          matches = content.match(/\/(GetImages|getimages)\s+"([^"]+)"(?:\s+"([^"]+)")?(?:\s+"([^"]+)")?/i);
-          if (matches) {
-            const requestedPubkey = matches[2].trim();
-            const startDate = matches[3] ? matches[3].trim() : null;
-            const endDate = matches[4] ? matches[4].trim() : null;
-            const imageUrls = await fetchImages(requestedPubkey, startDate, endDate);
-            if (event.kind === 1) {
-              processTextNote(event, { content, pubkey, requestedPubkey, imageUrls });
-            } else if (event.kind === 4) {
-              processDirectMessage(event, { content, pubkey,requestedPubkey, imageUrls });
-            }
+          console.log('Invalid command format. Usage: /GetNotes or /getnotes "pubkey" ["startDate"] ["endDate"]');
+          // Pass the event to processNonCommand if the command format is invalid
+          if (event.kind === 1 || event.kind === 4) {
+            processNonCommand(event, { content, pubkey });
           } else {
-            console.log('Invalid command format. Usage: /GetNotes or /GetImages "pubkey" ["startDate"] ["endDate"]');
+            console.log(`Unsupported event kind: ${event.kind}`);
           }
+        }
+      } else if (content.match(/\/(GetImages|getimages)/i)) {
+        let matches = content.match(/\/(GetImages|getimages)\s+"([^"]+)"(?:\s+"([^"]+)")?(?:\s+"([^"]+)")?/i);
+        if (matches) {
+          const requestedPubkey = matches[2].trim();
+          const startDate = matches[3] ? matches[3].trim() : null;
+          const endDate = matches[4] ? matches[4].trim() : null;
+          const imageUrls = await fetchImages(requestedPubkey, startDate, endDate);
+          if (event.kind === 1) {
+            processTextNote(event, { content, pubkey, requestedPubkey, imageUrls });
+          } else if (event.kind === 4) {
+            processDirectMessage(event, { content, pubkey, requestedPubkey, imageUrls });
+          }
+        } else {
+          console.log('Invalid command format. Usage: /GetImages or /getimages "pubkey" ["startDate"] ["endDate"]');
         }
       } else {
         // Handle non-command events for both text notes and direct messages.

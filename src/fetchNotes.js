@@ -30,8 +30,7 @@ async function fetchEventNotes(requestedPubkey, startDate, endDate) {
     }
 
     const subscription = ["REQ", crypto.randomUUID(), subscriptionOptions];
-      
-    const notesContent = [];  // This will store the content of each note
+    const notesContent = []; // This will store the content of each note
 
     const onMessage = (data) => {
       const messageString = data.toString();
@@ -39,7 +38,7 @@ async function fetchEventNotes(requestedPubkey, startDate, endDate) {
         const events = JSON.parse(messageString);
         events.forEach(event => {
           if (event.kind === 1 && event.pubkey === requestedPubkey) {
-            notesContent.push(event.content);  // Extracting content from each event
+            notesContent.push(event.content); // Extracting content from each event
           }
         });
       } catch (error) {
@@ -52,7 +51,7 @@ async function fetchEventNotes(requestedPubkey, startDate, endDate) {
 
     setTimeout(() => {
       ws.removeListener('message', onMessage);
-      resolve(notesContent);  // Resolve with the contents of the notes
+      resolve(notesContent); // Resolve with the contents of the notes
     }, 5000);
   });
 }

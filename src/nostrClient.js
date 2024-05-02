@@ -70,13 +70,14 @@ function isLikelyJson(data) {
          (trimmedData.startsWith('[') && trimmedData.endsWith(']'));
 }
 
+let keyWords = ["askyeghro"];
+
 function handleEvent(data) {
   let event;
   if (typeof data === 'string') {
     if (isLikelyJson(data)) {
       try {
         event = JSON.parse(data);
-        //console.log(`${new Date().toISOString()} - Parsed event JSON:`, event);
       } catch (error) {
         console.error(`${new Date().toISOString()} - Error parsing JSON:`, error);
         return;
@@ -93,78 +94,67 @@ function handleEvent(data) {
   }
 
   if (event && event.kind && Array.isArray(event.tags)) {
-    console.log(`${new Date().toISOString()} - Event passed initial checks, processing event:`, event);
-    processEvent(event);
+    // Moved tag checking logic here
+    const pTag = event.tags.find(tag => Array.isArray(tag) && tag[0] === 'p' && tag[1] === publicKey);
+    const tTag = event.tags.find(tag => Array.isArray(tag) && tag[0] === 't' && keyWords.includes(tag[1]));
+
+    if (pTag || tTag) {
+      console.log(`${new Date().toISOString()} - Event with keyword or pubkey found:`, event);
+      processEvent(event); // Continue processing the event if the tags are correct
+    } else {
+      console.error(`${new Date().toISOString()} - Event does not contain valid pTag or tTag, skipping:`, event);
+    }
   } else {
     console.error(`${new Date().toISOString()} - Malformed or incomplete event data received:`, event);
   }
 }
 
-let keyWords = ["askYEGHRO"];
-
 async function processEvent(event) {
-  if (Array.isArray(event.tags)) {
-    const pTag = event.tags.find(tag => Array.isArray(tag) && tag[0] === 'p' && tag[1] === publicKey);
-    const tTag = event.tags.find(tag => Array.isArray(tag) && tag[0] === 't' && keyWords.includes(tag[1]));
-    console.log("Checking tags", event.tags);
-    console.log("Public key used for checking", publicKey);
+  let content = event.content;
+  let pubkey = event.pubkey;
 
-    if (pTag || tTag) {
-      console.log(`${new Date().toISOString()} - Event with keyword or pubkey found:`, event);
-      let content = event.content;
-      let pubkey = event.pubkey;
+  // Assume decryption and command matching need to continue based on event.kind
+  if (event.kind === 4) {
+    content = await decrypt(privateKey, pubkey, content);
+  }
 
-      if (event.kind === 4) {
-        content = await decrypt(privateKey, pubkey, content);
+  // Check for specific commands and fetch data accordingly.
+  if (content.match(/\/(GetNotes|getnotes)/i)) {
+    let matches = content.match(/\/(GetNotes|getnotes)\s+"([^"]+)"(?:\s+"([^"]+)")?(?:\s+"([^"]+)")?/i);
+    if (matches) {
+      const requestedPubkey = matches[2].trim();
+      const startDate = matches[3] ? matches[3].trim() : null;
+      const endDate = matches[4] ? matches[4].trim() : null;
+      const requestedNotes = await fetchNotes(requestedPubkey, startDate, endDate);
+      if (event.kind === 1) {
+        processTextNote(event, { content, pubkey, requestedPubkey, requestedNotes });
+      } else if (event.kind === 4) {
+        processDirectMessage(event, { content, pubkey, requestedPubkey, requestedNotes });
       }
-
-      // Check for specific commands and fetch data accordingly.
-      if (content.match(/\/(GetNotes|getnotes)/i)) {
-        let matches = content.match(/\/(GetNotes|getnotes)\s+"([^"]+)"(?:\s+"([^"]+)")?(?:\s+"([^"]+)")?/i);
-        if (matches) {
-          const requestedPubkey = matches[2].trim();
-          const startDate = matches[3] ? matches[3].trim() : null;
-          const endDate = matches[4] ? matches[4].trim() : null;
-          const requestedNotes = await fetchNotes(requestedPubkey, startDate, endDate);
-          if (event.kind === 1) {
-            processTextNote(event, { content, pubkey, requestedPubkey, requestedNotes });
-          } else if (event.kind === 4) {
-            processDirectMessage(event, { content, pubkey, requestedPubkey, requestedNotes });
-          }
-        } else {
-          console.log('Invalid command format. Usage: /GetNotes or /getnotes "pubkey" ["startDate"] ["endDate"]');
-          // Pass the event to processNonCommand if the command format is invalid
-          if (event.kind === 1 || event.kind === 4) {
-            processNonCommand(event, { content, pubkey });
-          } else {
-            console.log(`Unsupported event kind: ${event.kind}`);
-          }
-        }
-      } else if (content.match(/\/(GetImages|getimages)/i)) {
-        let matches = content.match(/\/(GetImages|getimages)\s+"([^"]+)"(?:\s+"([^"]+)")?(?:\s+"([^"]+)")?/i);
-        if (matches) {
-          const requestedPubkey = matches[2].trim();
-          const startDate = matches[3] ? matches[3].trim() : null;
-          const endDate = matches[4] ? matches[4].trim() : null;
-          const imageUrls = await fetchImages(requestedPubkey, startDate, endDate);
-          if (event.kind === 1) {
-            processTextNote(event, { content, pubkey, requestedPubkey, imageUrls });
-          } else if (event.kind === 4) {
-            processDirectMessage(event, { content, pubkey, requestedPubkey, imageUrls });
-          }
-        } else {
-          console.log('Invalid command format. Usage: /GetImages or /getimages "pubkey" ["startDate"] ["endDate"]');
-        }
-      } else {
-        // Handle non-command events for both text notes and direct messages.
-        if (event.kind === 1 || event.kind === 4) {
-          processNonCommand(event, { content, pubkey });
-        } else {
-          console.log(`Unsupported event kind: ${event.kind}`);
-        }
+    } else {
+      console.log('Invalid command format. Usage: /GetNotes or /getnotes "pubkey" ["startDate"] ["endDate"]');
+    }
+  } else if (content.match(/\/(GetImages|getimages)/i)) {
+    let matches = content.match(/\/(GetImages|getimages)\s+"([^"]+)"(?:\s+"([^"]+)")?(?:\s+"([^"]+)")?/i);
+    if (matches) {
+      const requestedPubkey = matches[2].trim();
+      const startDate = matches[3] ? matches[3].trim() : null;
+      const endDate = matches[4] ? matches[4].trim() : null;
+      const imageUrls = await fetchImages(requestedPubkey, startDate, endDate);
+      if (event.kind === 1) {
+        processTextNote(event, { content, pubkey, requestedPubkey, imageUrls });
+      } else if (event.kind === 4) {
+        processDirectMessage(event, { content, pubkey, requestedPubkey, imageUrls });
       }
+    } else {
+      console.log('Invalid command format. Usage: /GetImages or /getimages "pubkey" ["startDate"] ["endDate"]');
     }
   } else {
-    console.error(`${new Date().toISOString()} - Malformed tags in event:`, event);
+    // Handle non-command events for both text notes and direct messages.
+    if (event.kind === 1 || event.kind === 4) {
+      processNonCommand(event, { content, pubkey });
+    } else {
+      console.log(`Unsupported event kind: ${event.kind}`);
+    }
   }
 }

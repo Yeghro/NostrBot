@@ -5,6 +5,7 @@ import { processDirectMessage, processTextNote, processNonCommand } from './proc
 import { publicKey, privateKey } from './configs.js';
 import { fetchImages } from './imageFetch.js';
 import { fetchNotes } from './fetchNotes.js';
+import { checkFollowListActivity } from "./checkFollowList.js";
 
 export let ws; // WebSocket connection
 
@@ -13,7 +14,7 @@ let startTime;  // Store the start time at a scope accessible by the ws.on('mess
 let reconnectionAttempts = 0;
 
 export function connectWebSocket() {
-    ws = new WebSocket('wss://nostrpub.yeghro.site');
+    ws = new WebSocket('wss://relay.primal.net');
 
     ws.on('open', () => {
         console.log(`${new Date().toISOString()} - Connected to the relay`);
@@ -113,12 +114,10 @@ async function processEvent(event) {
   let content = event.content;
   let pubkey = event.pubkey;
 
-  // Assume decryption and command matching need to continue based on event.kind
   if (event.kind === 4) {
     content = await decrypt(privateKey, pubkey, content);
   }
 
-  // Check for specific commands and fetch data accordingly.
   if (content.match(/\/(GetNotes|getnotes)/i)) {
     let matches = content.match(/\/(GetNotes|getnotes)\s+"([^"]+)"(?:\s+"([^"]+)")?(?:\s+"([^"]+)")?/i);
     if (matches) {
@@ -149,8 +148,21 @@ async function processEvent(event) {
     } else {
       console.log('Invalid command format. Usage: /GetImages or /getimages "pubkey" ["startDate"] ["endDate"]');
     }
+  } else if (content.match(/\/(checkfollowlist|checkfollowlist)/i)) {
+    let matches = content.match(/\/(checkfollowlist|checkfollowlist)\s+"([^"]+)"/i);
+    console.log('matched keyword:', matches);
+    if (matches) {
+      const requestedPubkey = matches[2].trim();
+      const activityReport = await checkFollowListActivity(requestedPubkey);
+      if (event.kind === 1) {
+        processTextNote(event, { content, pubkey, requestedPubkey, activityReport });
+      } else if (event.kind === 4) {
+        processDirectMessage(event, { content, pubkey, requestedPubkey, activityReport });
+      }
+    } else {
+      console.log('Invalid command format. Usage: /checkfollowlist or /checkfollowlist "pubkey"');
+    }
   } else {
-    // Handle non-command events for both text notes and direct messages.
     if (event.kind === 1 || event.kind === 4) {
       processNonCommand(event, { content, pubkey });
     } else {

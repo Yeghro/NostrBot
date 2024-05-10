@@ -49,15 +49,20 @@ export async function processTextNote(event, data) {
   console.log('Reply sent:', signedReply);
 }
 export async function processDirectMessage(event, data) {
-  const { content, pubkey, requestedNotes, requestedPubkey, imageUrls } = data;
+  const { content, pubkey, requestedNotes, requestedPubkey, imageUrls, activityReport } = data;
   console.log("Processing event:", event);
   console.log("Processing: requestedPubkey:", requestedPubkey);
+
   if (event.kind !== 4) {
     console.error('Not a direct message:', event);
     return;
   }
+
   let replyContent;
-  if (Array.isArray(imageUrls) && imageUrls.length > 0) {
+
+  if (activityReport) {
+    replyContent = `Activity report for pubkey ${requestedPubkey}:\n${activityReport}`;
+  } else if (Array.isArray(imageUrls) && imageUrls.length > 0) {
     replyContent = `Here are the images associated with pubkey ${requestedPubkey}:\n${imageUrls.join('\n')}`;
   } else if (Array.isArray(requestedNotes) && requestedNotes.length > 0) {
     replyContent = `Here are the notes associated with pubkey ${requestedPubkey}:\n${requestedNotes.join('\n')}`;
@@ -70,10 +75,12 @@ export async function processDirectMessage(event, data) {
       replyContent = "No notes or images found for the specified pubkey and date range.";
     }
   }
-  console.log('content to be sent as replay:',replyContent);
-  
+
+  console.log('content to be sent as replay:', replyContent);
+
   // Encrypt the reply content before sending
   const encryptedReplyContent = await encrypt(privateKey, pubkey, replyContent);
+
   const replyEvent = {
     pubkey: publicKey,
     created_at: Math.floor(Date.now() / 1000),
@@ -81,14 +88,18 @@ export async function processDirectMessage(event, data) {
     tags: [['p', pubkey]],
     content: encryptedReplyContent
   };
+
   const signedReply = await getSignedEvent(replyEvent, privateKey);
+
   if (!signedReply) {
     console.error('Failed to sign the reply event.');
     return;
   }
+
   ws.send(JSON.stringify(["EVENT", signedReply]));
   console.log('Reply sent:', signedReply);
 }
+
 export async function processNonCommand(event, data) {
   let { content, pubkey } = data;
 

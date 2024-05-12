@@ -38,7 +38,7 @@ export async function checkFollowListActivity(requestedPubkey) {
       if (event[0] === "EVENT" && event[2].kind === 1) {
         const pubkey = event[2].pubkey;
         const createdAt = event[2].created_at;
-        console.log("Timestamp per key:", pubkey, createdAt);
+        // console.log("Timestamp per key:", pubkey, createdAt);
         pendingRequests.set(pubkey, createdAt); // Store the timestamp in the map
         completedRequests++;
 
@@ -67,8 +67,8 @@ export async function checkFollowListActivity(requestedPubkey) {
 
         for (const pubkey of batch) {
           const lastNoteTimestamp = pendingRequests.get(pubkey);
-          console.log("Last note Timestamps:", lastNoteTimestamp);
-          console.log("Stored in PendingRequests:", pendingRequests);
+          // console.log("Last note Timestamps:", lastNoteTimestamp);
+          //console.log("Stored in PendingRequests:", pendingRequests);
           if (lastNoteTimestamp === undefined) {
             response.push(`No notes found for ${pubkey}`);
           } else if (lastNoteTimestamp < sixMonthsAgo) {

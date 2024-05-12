@@ -1,33 +1,47 @@
-
-import { sendMessageToOllama } from './ollamaReq.js';
-import { publicKey, privateKey } from './configs.js';
-import { getSignedEvent } from './eventSigning.js';
-import { ws } from './nostrClient.js';
-import { encrypt } from 'nostr-tools/nip04';
+import { sendMessageToOllama } from "./ollamaReq.js";
+import { publicKey, privateKey } from "./configs.js";
+import { getSignedEvent } from "./eventSigning.js";
+import { ws } from "./nostrClient.js";
+import { encrypt } from "nostr-tools/nip04";
 
 export async function processTextNote(event, data) {
-  const { content, pubkey, requestedPubkey, requestedNotes, imageUrls } = data;
+  const {
+    content,
+    pubkey,
+    requestedPubkey,
+    requestedNotes,
+    imageUrls,
+    activityReport,
+  } = data;
 
   if (content) {
-    console.log(`${new Date().toISOString()} - Received text note:`, event.content);
+    console.log(
+      `${new Date().toISOString()} - Received text note:`,
+      event.content
+    );
   }
 
   let replyContent;
-  if (imageUrls && imageUrls.length > 0) {
-    replyContent = `Here are the images associated with pubkey ${requestedPubkey}:\n${imageUrls.join('\n')}`;
+  if (activityReport) {
+    replyContent = `Activity report for pubkey ${requestedPubkey}:\n${activityReport}`;
+  } else if (imageUrls && imageUrls.length > 0) {
+    replyContent = `Here are the images associated with pubkey ${requestedPubkey}:\n${imageUrls.join(
+      "\n"
+    )}`;
   } else if (Array.isArray(requestedNotes) && requestedNotes.length > 0) {
-    replyContent = `Here are the notes associated with pubkey ${requestedPubkey}:\n${requestedNotes.join('\n')}`;
+    replyContent = `Here are the notes associated with pubkey ${requestedPubkey}:\n${requestedNotes.join(
+      "\n"
+    )}`;
   } else {
     if (requestedNotes === "No notes found") {
       replyContent = "No notes found for the specified pubkey and date range.";
     } else if (imageUrls === "No images found") {
       replyContent = "No images found for the specified pubkey and date range.";
     } else {
-      replyContent = "No notes or images found for the specified pubkey and date range.";
+      replyContent =
+        "No notes or images found for the specified pubkey and date range.";
     }
   }
-
-  
 
   console.log("Formatted reply content:", replyContent);
 
@@ -35,26 +49,36 @@ export async function processTextNote(event, data) {
     pubkey: publicKey,
     created_at: Math.floor(Date.now() / 1000),
     kind: 1,
-    tags: [['e', event.id], ['p', event.pubkey]],
-    content: replyContent
+    tags: [
+      ["e", event.id],
+      ["p", event.pubkey],
+    ],
+    content: replyContent,
   };
 
   const signedReply = await getSignedEvent(replyEvent, privateKey);
   if (!signedReply) {
-    console.error('Failed to sign the reply event.');
+    console.error("Failed to sign the reply event.");
     return;
   }
 
   ws.send(JSON.stringify(["EVENT", signedReply]));
-  console.log('Reply sent:', signedReply);
+  console.log("Reply sent:", signedReply);
 }
 export async function processDirectMessage(event, data) {
-  const { content, pubkey, requestedNotes, requestedPubkey, imageUrls, activityReport } = data;
+  const {
+    content,
+    pubkey,
+    requestedNotes,
+    requestedPubkey,
+    imageUrls,
+    activityReport,
+  } = data;
   console.log("Processing event:", event);
   console.log("Processing: requestedPubkey:", requestedPubkey);
 
   if (event.kind !== 4) {
-    console.error('Not a direct message:', event);
+    console.error("Not a direct message:", event);
     return;
   }
 
@@ -63,20 +87,25 @@ export async function processDirectMessage(event, data) {
   if (activityReport) {
     replyContent = `Activity report for pubkey ${requestedPubkey}:\n${activityReport}`;
   } else if (Array.isArray(imageUrls) && imageUrls.length > 0) {
-    replyContent = `Here are the images associated with pubkey ${requestedPubkey}:\n${imageUrls.join('\n')}`;
+    replyContent = `Here are the images associated with pubkey ${requestedPubkey}:\n${imageUrls.join(
+      "\n"
+    )}`;
   } else if (Array.isArray(requestedNotes) && requestedNotes.length > 0) {
-    replyContent = `Here are the notes associated with pubkey ${requestedPubkey}:\n${requestedNotes.join('\n')}`;
+    replyContent = `Here are the notes associated with pubkey ${requestedPubkey}:\n${requestedNotes.join(
+      "\n"
+    )}`;
   } else {
     if (imageUrls === "No Images found") {
       replyContent = "No Notes found for the specified pubkey and date range.";
     } else if (requestedNotes && requestedNotes.length === 0) {
       replyContent = "No notes found for the specified pubkey and date range.";
     } else {
-      replyContent = "No notes or images found for the specified pubkey and date range.";
+      replyContent =
+        "No notes or images found for the specified pubkey and date range.";
     }
   }
 
-  console.log('content to be sent as replay:', replyContent);
+  console.log("content to be sent as replay:", replyContent);
 
   // Encrypt the reply content before sending
   const encryptedReplyContent = await encrypt(privateKey, pubkey, replyContent);
@@ -85,19 +114,19 @@ export async function processDirectMessage(event, data) {
     pubkey: publicKey,
     created_at: Math.floor(Date.now() / 1000),
     kind: 4,
-    tags: [['p', pubkey]],
-    content: encryptedReplyContent
+    tags: [["p", pubkey]],
+    content: encryptedReplyContent,
   };
 
   const signedReply = await getSignedEvent(replyEvent, privateKey);
 
   if (!signedReply) {
-    console.error('Failed to sign the reply event.');
+    console.error("Failed to sign the reply event.");
     return;
   }
 
   ws.send(JSON.stringify(["EVENT", signedReply]));
-  console.log('Reply sent:', signedReply);
+  console.log("Reply sent:", signedReply);
 }
 
 export async function processNonCommand(event, data) {
@@ -106,7 +135,7 @@ export async function processNonCommand(event, data) {
   if (event.kind === 1) {
     const npubPattern = /nostr:npub1\w+/g;
     console.log("Content before Npub trimming:", content);
-    content = content.replace(npubPattern, '').trim();
+    content = content.replace(npubPattern, "").trim();
   }
   // Send the message to Ollama
   const messages = [{ role: "user", content: content }];
@@ -114,44 +143,53 @@ export async function processNonCommand(event, data) {
   const ollamaResponse = await sendMessageToOllama(messages);
   console.log("Ollama response received:", ollamaResponse);
 
-  const replyContent = typeof ollamaResponse === 'object' && ollamaResponse.hasOwnProperty('replyContent')
-    ? ollamaResponse.replyContent
-    : "No response generated.";
+  const replyContent =
+    typeof ollamaResponse === "object" &&
+    ollamaResponse.hasOwnProperty("replyContent")
+      ? ollamaResponse.replyContent
+      : "No response generated.";
 
   if (event.kind === 1) {
     const replyEvent = {
       pubkey: publicKey,
       created_at: Math.floor(Date.now() / 1000),
       kind: 1,
-      tags: [['e', event.id], ['p', event.pubkey]],
-      content: replyContent
+      tags: [
+        ["e", event.id],
+        ["p", event.pubkey],
+      ],
+      content: replyContent,
     };
 
     const signedReply = await getSignedEvent(replyEvent, privateKey);
     if (!signedReply) {
-      console.error('Failed to sign the reply event.');
+      console.error("Failed to sign the reply event.");
       return;
     }
 
     ws.send(JSON.stringify(["EVENT", signedReply]));
-    console.log('Reply sent:', signedReply);
+    console.log("Reply sent:", signedReply);
   } else if (event.kind === 4) {
-    const encryptedReplyContent = await encrypt(privateKey, pubkey, replyContent);
+    const encryptedReplyContent = await encrypt(
+      privateKey,
+      pubkey,
+      replyContent
+    );
     const replyEvent = {
       pubkey: publicKey,
       created_at: Math.floor(Date.now() / 1000),
       kind: 4,
-      tags: [['p', event.pubkey]],
-      content: encryptedReplyContent
+      tags: [["p", event.pubkey]],
+      content: encryptedReplyContent,
     };
 
     const signedReply = await getSignedEvent(replyEvent, privateKey);
     if (!signedReply) {
-      console.error('Failed to sign the reply event.');
+      console.error("Failed to sign the reply event.");
       return;
     }
 
     ws.send(JSON.stringify(["EVENT", signedReply]));
-    console.log('Reply sent:', signedReply);
+    console.log("Reply sent:", signedReply);
   }
 }

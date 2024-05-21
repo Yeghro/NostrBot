@@ -155,15 +155,17 @@ async function processEvent(event) {
   if (event.kind === 4) {
     content = await decrypt(privateKey, pubkey, content);
   }
+  console.log("Decrypted Content:", content);
 
   if (content.match(/\/(GetNotes|getnotes)/i)) {
     let matches = content.match(
-      /\/(GetNotes|getnotes)\s+"([^"]+)"(?:\s+"([^"]+)")?(?:\s+"([^"]+)")?/i
+      /\/(GetNotes|getnotes)\s+["“](nostr:|@)?([^"”]+)["”](?:\s+["“]([^"”]+)["”])?(?:\s+["“]([^"”]+)["”])?/i
     );
     if (matches) {
-      const requestedPubkey = matches[2].trim();
-      const startDate = matches[3] ? matches[3].trim() : null;
-      const endDate = matches[4] ? matches[4].trim() : null;
+      let requestedPubkey = matches[2] + matches[3].trim(); // Concatenate the prefix and the actual pubkey
+      const startDate = matches[4] ? matches[4].trim() : null;
+      const endDate = matches[5] ? matches[5].trim() : null;
+
       const requestedNotes = await fetchNotes(
         requestedPubkey,
         startDate,
@@ -186,7 +188,7 @@ async function processEvent(event) {
       }
     } else {
       console.log(
-        'Invalid command format. Usage: /GetNotes or /getnotes "pubkey" ["startDate"] ["endDate"]'
+        'Invalid command format. Usage: /GetNotes or /getnotes "pubkey" "startDate" "endDate"'
       );
     }
   } else if (content.match(/\/(GetImages|getimages)/i)) {

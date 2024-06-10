@@ -119,8 +119,37 @@ function handleEvent(data) {
     return;
   }
 
+  // Check if the event pubkey matches the bot's pubkey
+  if (event.pubkey === publicKey) {
+    console.log(
+      `${new Date().toISOString()} - Event ignored because it is from the bot's own pubkey:`,
+      event
+    );
+    return; // Ignore the event if it is from the bot's own pubkey
+  }
+
+  // Check for trigger words in the content
+  if (event.content && typeof event.content === "string") {
+    const contentLower = event.content.toLowerCase();
+    if (
+      (contentLower.includes("nostr") &&
+        contentLower.includes("inactive") &&
+        contentLower.includes("accounts")) ||
+      (contentLower.includes("inactive") && contentLower.includes("users"))
+    ) {
+      const data = {
+        content: event.content,
+        pubkey: event.pubkey,
+        inactiveCuriosity:
+          "Check your nostr follow list for inactive accounts https://yeghro.site/nostr-inactive-users-checker",
+      };
+
+      processTextNote(event, data);
+      return; // Stop further processing
+    }
+  }
+
   if (event && event.kind && Array.isArray(event.tags)) {
-    // Moved tag checking logic here
     const pTag = event.tags.find(
       (tag) => Array.isArray(tag) && tag[0] === "p" && tag[1] === publicKey
     );
@@ -133,7 +162,26 @@ function handleEvent(data) {
         `${new Date().toISOString()} - Event with keyword or pubkey found:`,
         event
       );
-      processEvent(event); // Continue processing the event if the tags are correct
+
+      // Check if the content contains only "askYEGHRO" or "#askYEGHRO"
+      if (event.content && typeof event.content === "string") {
+        const normalizedContent = event.content.trim().toLowerCase();
+        if (
+          normalizedContent === "askyeghro" ||
+          normalizedContent === "#askyeghro"
+        ) {
+          console.log(
+            `${new Date().toISOString()} - Event ignored because content contains only "askYEGHRO":`,
+            event
+          );
+          return; // Ignore the event if content contains only "askYEGHRO"
+        } else {
+          // Remove "askYEGHRO" or "#askYEGHRO" from the content
+          event.content = event.content.replace(/#?askYEGHRO/gi, "").trim();
+        }
+      }
+
+      processEvent(event); // Pass the event to processEvent for further processing
     } else {
       console.error(
         `${new Date().toISOString()} - Event does not contain valid pTag or tTag, skipping:`,

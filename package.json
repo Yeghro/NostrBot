@@ -11,9 +11,11 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@langchain/community": "^0.2.0",
     "@noble/hashes": "^1.4.0",
     "base-64": "^1.0.0",
     "browserify-cipher": "^1.0.1",
+    "cheerio": "^1.0.0-rc.12",
     "dotenv": "^16.4.5",
     "noble-hashes": "^0.3.1",
     "noble-secp256k1": "^1.2.14",

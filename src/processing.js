@@ -12,6 +12,7 @@ export async function processTextNote(event, data) {
     requestedNotes,
     imageUrls,
     activityReport,
+    inactiveCuriosity,
   } = data;
 
   if (content) {
@@ -22,7 +23,9 @@ export async function processTextNote(event, data) {
   }
 
   let replyContent;
-  if (activityReport) {
+  if (inactiveCuriosity) {
+    replyContent = inactiveCuriosity;
+  } else if (activityReport) {
     replyContent = `Activity report for pubkey ${requestedPubkey}:\n${activityReport}`;
   } else if (imageUrls && imageUrls.length > 0) {
     replyContent = `Here are the images associated with pubkey ${requestedPubkey}:\n${imageUrls.join(

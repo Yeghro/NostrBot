@@ -1,6 +1,6 @@
 export async function sendMessageToOllama(messages) {
   const body = {
-    model: "llama3-gradient:8b-instruct-1048k-q8_0",
+    model: "yeghroBot",
     messages: messages,
     stream: false,
   };

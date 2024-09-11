@@ -72,21 +72,42 @@ function isLikelyJson(data) {
 
 let keyWords = ["askyeghro"];
 
+// Handle incoming Nostr events
 function handleEvent(data) {
   let event = parseEventData(data);
   if (!event) return;
 
   if (isValidEvent(event)) {
-    const { pTag, tTag } = findRelevantTags(event);
-    if (pTag || tTag) {
-      console.log(`${new Date().toISOString()} - Event with keyword or pubkey found:`, event);
+    const relevantTags = findRelevantTags(event);
+    if (isEventRelevant(relevantTags)) {
+      logRelevantEvent(event);
       processEvent(event);
     } else {
-      console.error(`${new Date().toISOString()} - Event does not contain valid pTag or tTag, skipping:`, event);
+      logIrrelevantEvent(event);
     }
   } else {
-    console.error(`${new Date().toISOString()} - Malformed or incomplete event data received:`, event);
+    logMalformedEvent(event);
   }
+}
+
+// Check if the event is relevant based on its tags
+function isEventRelevant({ pTag, tTag }) {
+  return pTag || tTag;
+}
+
+// Log relevant event
+function logRelevantEvent(event) {
+  console.log(`${new Date().toISOString()} - Event with keyword or pubkey found:`, event);
+}
+
+// Log irrelevant event
+function logIrrelevantEvent(event) {
+  console.error(`${new Date().toISOString()} - Event does not contain valid pTag or tTag, skipping:`, event);
+}
+
+// Log malformed event
+function logMalformedEvent(event) {
+  console.error(`${new Date().toISOString()} - Malformed or incomplete event data received:`, event);
 }
 
 function parseEventData(data) {

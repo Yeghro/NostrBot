@@ -39,22 +39,25 @@ async function sendReply(event, replyContent, isDirectMessage = false) {
 }
 
 export async function processTextNote(event, data) {
-  console.log(`${new Date().toISOString()} - Received text note:`, event.content);
-  const replyContent = generateReplyContent(data);
-  console.log("Formatted reply content:", replyContent);
-  await sendReply(event, replyContent);
+  await processMessage(event, data, false);
 }
 
 export async function processDirectMessage(event, data) {
-  console.log("Processing event:", event);
-  console.log("Processing: requestedPubkey:", data.requestedPubkey);
   if (event.kind !== 4) {
     console.error('Not a direct message:', event);
     return;
   }
+  await processMessage(event, data, true);
+}
+
+async function processMessage(event, data, isDirectMessage) {
+  console.log(`${new Date().toISOString()} - Received ${isDirectMessage ? 'direct message' : 'text note'}:`, event.content);
+  console.log("Processing: requestedPubkey:", data.requestedPubkey);
+
   const replyContent = generateReplyContent(data);
-  console.log('content to be sent as reply:', replyContent);
-  await sendReply(event, replyContent, true);
+  console.log('Content to be sent as reply:', replyContent);
+
+  await sendReply(event, replyContent, isDirectMessage);
 }
 export async function processNonCommand(event, data) {
   let { content, pubkey } = data;

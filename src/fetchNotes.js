@@ -5,16 +5,24 @@ export async function fetchNotes(requestedPubkey, startDate, endDate) {
   console.log('Requested Notes From:', requestedPubkey);
 
   try {
+    // Decode the public key
     const pubkeyHex = decodePubKey(requestedPubkey);
+
+    // Fetch notes using the decoded public key
     const notesContent = await fetchEventNotes(pubkeyHex, startDate, endDate);
+    
     console.log('Notes Found:', notesContent);
     return notesContent;
   } catch (error) {
     console.error('Error occurred while fetching Notes:', error);
+    
+    // Throw a more specific error for invalid public key format
     if (error.message === 'Invalid npub') {
-      throw new Error('Invalid public key format');
+      throw new Error('Invalid public key format. Please provide a valid npub.');
     }
-    return []; // Return an empty array for other errors
+    
+    // For other errors, return an empty array
+    return [];
   }
 }
 async function fetchEventNotes(requestedPubkey, startDate, endDate) {

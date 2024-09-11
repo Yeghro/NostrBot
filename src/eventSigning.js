@@ -3,8 +3,11 @@ import { finalizeEvent } from 'nostr-tools/pure';
 
 export async function getSignedEvent(event, privateKey) {
   try {
-    if (!event || !privateKey) {
-      throw new Error('Invalid event data or private key.');
+    if (!event) {
+      throw new Error('Invalid event data.');
+    }
+    if (!privateKey) {
+      throw new Error('Invalid private key.');
     }
 
     const signedEvent = finalizeEvent(event, privateKey);

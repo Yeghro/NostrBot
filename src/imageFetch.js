@@ -1,17 +1,21 @@
 import { ws } from "./nostrClient.js";
 import { decodePubKey } from "./decodeNpub.js";
+
 export async function fetchImages(requestedPubkey, startDate, endDate) {
   console.log('Requested Images From:', requestedPubkey);
 
   try {
-    let pubkeyHex = decodePubKey(requestedPubkey);
-    let imageEvents = await fetchImageEvents(pubkeyHex, startDate, endDate);
-    let imageUrls = extractImageUrls(imageEvents);
+    const pubkeyHex = decodePubKey(requestedPubkey);
+    const imageEvents = await fetchImageEvents(pubkeyHex, startDate, endDate);
+    const imageUrls = extractImageUrls(imageEvents);
     console.log('URLs Found:', imageUrls);
     return imageUrls;
   } catch (error) {
     console.error('Error occurred while fetching images:', error);
-    return []; // Return an empty array in case of an error
+    if (error.message === 'Invalid npub') {
+      throw new Error('Invalid public key format');
+    }
+    return []; // Return an empty array for other errors
   }
 }
 

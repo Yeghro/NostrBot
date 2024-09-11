@@ -73,40 +73,55 @@ function isLikelyJson(data) {
 let keyWords = ["askyeghro"];
 
 function handleEvent(data) {
-  let event;
-  if (typeof data === 'string') {
-    if (isLikelyJson(data)) {
-      try {
-        event = JSON.parse(data);
-      } catch (error) {
-        console.error(`${new Date().toISOString()} - Error parsing JSON:`, error);
-        return;
-      }
-    } else {
-      console.log(`${new Date().toISOString()} - Received non-JSON string, skipping:`, data);
-      return;
-    }
-  } else if (typeof data === 'object' && data !== null) {
-    event = data;
-  } else {
-    console.log(`${new Date().toISOString()} - Invalid data type received, skipping:`, data);
-    return;
-  }
+  let event = parseEventData(data);
+  if (!event) return;
 
-  if (event && event.kind && Array.isArray(event.tags)) {
-    // Moved tag checking logic here
-    const pTag = event.tags.find(tag => Array.isArray(tag) && tag[0] === 'p' && tag[1] === publicKey);
-    const tTag = event.tags.find(tag => Array.isArray(tag) && tag[0] === 't' && keyWords.includes(tag[1]));
-
+  if (isValidEvent(event)) {
+    const { pTag, tTag } = findRelevantTags(event);
     if (pTag || tTag) {
       console.log(`${new Date().toISOString()} - Event with keyword or pubkey found:`, event);
-      processEvent(event); // Continue processing the event if the tags are correct
+      processEvent(event);
     } else {
       console.error(`${new Date().toISOString()} - Event does not contain valid pTag or tTag, skipping:`, event);
     }
   } else {
     console.error(`${new Date().toISOString()} - Malformed or incomplete event data received:`, event);
   }
+}
+
+function parseEventData(data) {
+  if (typeof data === 'string') {
+    return parseStringData(data);
+  } else if (typeof data === 'object' && data !== null) {
+    return data;
+  } else {
+    console.log(`${new Date().toISOString()} - Invalid data type received, skipping:`, data);
+    return null;
+  }
+}
+
+function parseStringData(data) {
+  if (isLikelyJson(data)) {
+    try {
+      return JSON.parse(data);
+    } catch (error) {
+      console.error(`${new Date().toISOString()} - Error parsing JSON:`, error);
+      return null;
+    }
+  } else {
+    console.log(`${new Date().toISOString()} - Received non-JSON string, skipping:`, data);
+    return null;
+  }
+}
+
+function isValidEvent(event) {
+  return event && event.kind && Array.isArray(event.tags);
+}
+
+function findRelevantTags(event) {
+  const pTag = event.tags.find(tag => Array.isArray(tag) && tag[0] === 'p' && tag[1] === publicKey);
+  const tTag = event.tags.find(tag => Array.isArray(tag) && tag[0] === 't' && keyWords.includes(tag[1]));
+  return { pTag, tTag };
 }
 
 async function processEvent(event) {

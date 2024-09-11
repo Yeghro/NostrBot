@@ -1,5 +1,6 @@
 import { ws } from "./nostrClient.js";
 import { decodePubKey } from "./decodeNpub.js";
+
 export async function fetchNotes(requestedPubkey, startDate, endDate) {
   console.log('Requested Notes From:', requestedPubkey);
 
@@ -10,7 +11,10 @@ export async function fetchNotes(requestedPubkey, startDate, endDate) {
     return notesContent;
   } catch (error) {
     console.error('Error occurred while fetching Notes:', error);
-    return []; // Return an empty array on error
+    if (error.message === 'Invalid npub') {
+      throw new Error('Invalid public key format');
+    }
+    return []; // Return an empty array for other errors
   }
 }
 async function fetchEventNotes(requestedPubkey, startDate, endDate) {

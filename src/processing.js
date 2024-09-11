@@ -5,38 +5,27 @@ import { getSignedEvent } from './eventSigning.js';
 import { ws } from './nostrClient.js';
 import { encrypt } from 'nostr-tools/nip04';
 
-export async function processTextNote(event, data) {
-  const { content, pubkey, requestedPubkey, requestedNotes, imageUrls } = data;
+function generateReplyContent(data) {
+  const { requestedPubkey, requestedNotes, imageUrls } = data;
 
-  if (content) {
-    console.log(`${new Date().toISOString()} - Received text note:`, event.content);
-  }
-
-  let replyContent;
-  if (imageUrls && imageUrls.length > 0) {
-    replyContent = `Here are the images associated with pubkey ${requestedPubkey}:\n${imageUrls.join('\n')}`;
+  if (Array.isArray(imageUrls) && imageUrls.length > 0) {
+    return `Here are the images associated with pubkey ${requestedPubkey}:\n${imageUrls.join('\n')}`;
   } else if (Array.isArray(requestedNotes) && requestedNotes.length > 0) {
-    replyContent = `Here are the notes associated with pubkey ${requestedPubkey}:\n${requestedNotes.join('\n')}`;
+    return `Here are the notes associated with pubkey ${requestedPubkey}:\n${requestedNotes.join('\n')}`;
+  } else if (imageUrls === "No Images found" || (requestedNotes && requestedNotes.length === 0)) {
+    return "No notes or images found for the specified pubkey and date range.";
   } else {
-    if (requestedNotes === "No notes found") {
-      replyContent = "No notes found for the specified pubkey and date range.";
-    } else if (imageUrls === "No images found") {
-      replyContent = "No images found for the specified pubkey and date range.";
-    } else {
-      replyContent = "No notes or images found for the specified pubkey and date range.";
-    }
+    return "No data found for the specified pubkey and date range.";
   }
+}
 
-  
-
-  console.log("Formatted reply content:", replyContent);
-
+async function sendReply(event, replyContent, isDirectMessage = false) {
   const replyEvent = {
     pubkey: publicKey,
     created_at: Math.floor(Date.now() / 1000),
-    kind: 1,
-    tags: [['e', event.id], ['p', event.pubkey]],
-    content: replyContent
+    kind: isDirectMessage ? 4 : 1,
+    tags: isDirectMessage ? [['p', event.pubkey]] : [['e', event.id], ['p', event.pubkey]],
+    content: isDirectMessage ? await encrypt(privateKey, event.pubkey, replyContent) : replyContent
   };
 
   const signedReply = await getSignedEvent(replyEvent, privateKey);
@@ -48,46 +37,24 @@ export async function processTextNote(event, data) {
   ws.send(JSON.stringify(["EVENT", signedReply]));
   console.log('Reply sent:', signedReply);
 }
+
+export async function processTextNote(event, data) {
+  console.log(`${new Date().toISOString()} - Received text note:`, event.content);
+  const replyContent = generateReplyContent(data);
+  console.log("Formatted reply content:", replyContent);
+  await sendReply(event, replyContent);
+}
+
 export async function processDirectMessage(event, data) {
-  const { content, pubkey, requestedNotes, requestedPubkey, imageUrls } = data;
   console.log("Processing event:", event);
-  console.log("Processing: requestedPubkey:", requestedPubkey);
+  console.log("Processing: requestedPubkey:", data.requestedPubkey);
   if (event.kind !== 4) {
     console.error('Not a direct message:', event);
     return;
   }
-  let replyContent;
-  if (Array.isArray(imageUrls) && imageUrls.length > 0) {
-    replyContent = `Here are the images associated with pubkey ${requestedPubkey}:\n${imageUrls.join('\n')}`;
-  } else if (Array.isArray(requestedNotes) && requestedNotes.length > 0) {
-    replyContent = `Here are the notes associated with pubkey ${requestedPubkey}:\n${requestedNotes.join('\n')}`;
-  } else {
-    if (imageUrls === "No Images found") {
-      replyContent = "No Notes found for the specified pubkey and date range.";
-    } else if (requestedNotes && requestedNotes.length === 0) {
-      replyContent = "No notes found for the specified pubkey and date range.";
-    } else {
-      replyContent = "No notes or images found for the specified pubkey and date range.";
-    }
-  }
-  console.log('content to be sent as replay:',replyContent);
-  
-  // Encrypt the reply content before sending
-  const encryptedReplyContent = await encrypt(privateKey, pubkey, replyContent);
-  const replyEvent = {
-    pubkey: publicKey,
-    created_at: Math.floor(Date.now() / 1000),
-    kind: 4,
-    tags: [['p', pubkey]],
-    content: encryptedReplyContent
-  };
-  const signedReply = await getSignedEvent(replyEvent, privateKey);
-  if (!signedReply) {
-    console.error('Failed to sign the reply event.');
-    return;
-  }
-  ws.send(JSON.stringify(["EVENT", signedReply]));
-  console.log('Reply sent:', signedReply);
+  const replyContent = generateReplyContent(data);
+  console.log('content to be sent as reply:', replyContent);
+  await sendReply(event, replyContent, true);
 }
 export async function processNonCommand(event, data) {
   let { content, pubkey } = data;

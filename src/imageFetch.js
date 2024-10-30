@@ -1,17 +1,22 @@
 import { ws } from "./nostrClient.js";
 import { decodePubKey } from "./decodeNpub.js";
+
+function generateNoteUrl(noteId) {
+  return `https://primal.net/e/${noteId}`;
+}
+
 export async function fetchImages(requestedPubkey, startDate, endDate) {
   console.log('Requested Images From:', requestedPubkey);
 
   try {
     let pubkeyHex = decodePubKey(requestedPubkey);
     let imageEvents = await fetchImageEvents(pubkeyHex, startDate, endDate);
-    let imageUrls = extractImageUrls(imageEvents);
-    console.log('URLs Found:', imageUrls);
-    return imageUrls;
+    let imageData = extractImageData(imageEvents);
+    console.log('Image data found:', imageData);
+    return imageData;
   } catch (error) {
     console.error('Error occurred while fetching images:', error);
-    return []; // Return an empty array in case of an error
+    return []; 
   }
 }
 
@@ -58,16 +63,34 @@ async function fetchImageEvents(requestedPubkey, startDate, endDate) {
   });
 }
 
-function extractImageUrls(events) {
-  const imageUrls = [];
+function extractImageData(events) {
+  const imageData = [];
+  
   events.forEach(event => {
     if (event.content) {
-      const urlRegex = /(https?:\/\/[^\s]+\.(?:jpg|jpeg|png|gif))/gi;
-      const urls = event.content.match(urlRegex);
-      if (urls) {
-        imageUrls.push(...urls);
+      try {
+        const urlRegex = /(https?:\/\/[^\s]+\.(?:jpg|jpeg|png|gif))/gi;
+        const urls = event.content.match(urlRegex);
+        
+        if (urls) {
+          urls.forEach(imageUrl => {
+            // Ensure all required properties are present
+            imageData.push({
+              imageUrl: imageUrl,
+              created_at: event.created_at * 1000, // Convert to milliseconds
+              id: event.id,
+              noteUrl: generateNoteUrl(event.id)
+            });
+          });
+        }
+      } catch (error) {
+        console.error('Error processing event:', error, event);
       }
     }
   });
-  return imageUrls;
+
+  // Add debug logging
+  console.log('Extracted image data:', imageData);
+  
+  return imageData.sort((a, b) => b.created_at - a.created_at);
 }

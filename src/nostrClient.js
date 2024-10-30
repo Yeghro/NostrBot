@@ -13,7 +13,7 @@ let startTime;  // Store the start time at a scope accessible by the ws.on('mess
 let reconnectionAttempts = 0;
 
 export function connectWebSocket() {
-    ws = new WebSocket('wss://nostrpub.yeghro.site');
+    ws = new WebSocket('wss://relay.primal.net');
 
     ws.on('open', () => {
         console.log(`${new Date().toISOString()} - Connected to the relay`);
@@ -109,13 +109,36 @@ function handleEvent(data) {
   }
 }
 
+function sanitizeInput(input) {
+  if (!input || typeof input !== 'string') return '';
+  // Remove any control characters and limit length
+  return input.replace(/[\x00-\x1F\x7F-\x9F]/g, '').slice(0, MAX_CONTENT_LENGTH);
+}
+
+const MAX_CONTENT_LENGTH = 64000; // NIP-01 suggested limit
+
+
 async function processEvent(event) {
   let content = event.content;
   let pubkey = event.pubkey;
 
-  // Assume decryption and command matching need to continue based on event.kind
+  // Sanitize content before processing
+  content = sanitizeInput(content);
+  
+  if (!content) {
+    console.log('Empty or invalid content received');
+    return;
+  }
+
+  // Decrypt if needed (kind 4)
   if (event.kind === 4) {
-    content = await decrypt(privateKey, pubkey, content);
+    try {
+      content = await decrypt(privateKey, pubkey, content);
+      content = sanitizeInput(content); // Sanitize after decryption too
+    } catch (error) {
+      console.error('Failed to decrypt message:', error);
+      return;
+    }
   }
 
   // Check for specific commands and fetch data accordingly.

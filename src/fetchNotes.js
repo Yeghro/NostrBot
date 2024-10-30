@@ -1,5 +1,11 @@
 import { ws } from "./nostrClient.js";
 import { decodePubKey } from "./decodeNpub.js";
+
+// Update URL generator to use primal.net
+function generateNoteUrl(noteId) {
+  return `https://primal.net/e/${noteId}`;
+}
+
 export async function fetchNotes(requestedPubkey, startDate, endDate) {
   console.log('Requested Notes From:', requestedPubkey);
 
@@ -13,6 +19,7 @@ export async function fetchNotes(requestedPubkey, startDate, endDate) {
     return []; // Return an empty array on error
   }
 }
+
 async function fetchEventNotes(requestedPubkey, startDate, endDate) {
   return new Promise((resolve, reject) => {
     const subscriptionOptions = {
@@ -30,7 +37,7 @@ async function fetchEventNotes(requestedPubkey, startDate, endDate) {
     }
 
     const subscription = ["REQ", crypto.randomUUID(), subscriptionOptions];
-    const notesContent = []; // This will store the content of each note
+    const notes = [];
 
     const onMessage = (data) => {
       const messageString = data.toString();
@@ -38,7 +45,12 @@ async function fetchEventNotes(requestedPubkey, startDate, endDate) {
         const events = JSON.parse(messageString);
         events.forEach(event => {
           if (event.kind === 1 && event.pubkey === requestedPubkey) {
-            notesContent.push(event.content); // Extracting content from each event
+            notes.push({
+              content: event.content,
+              created_at: new Date(event.created_at * 1000).toISOString(),
+              id: event.id,
+              url: generateNoteUrl(event.id)
+            });
           }
         });
       } catch (error) {
@@ -51,7 +63,7 @@ async function fetchEventNotes(requestedPubkey, startDate, endDate) {
 
     setTimeout(() => {
       ws.removeListener('message', onMessage);
-      resolve(notesContent); // Resolve with the contents of the notes
+      resolve(notes); // Resolve with the contents of the notes
     }, 5000);
   });
 }

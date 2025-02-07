@@ -1,4 +1,4 @@
-import { ws } from "./nostrClient.js";
+import { createPool, DEFAULT_RELAYS } from "./nostrConnection.js";
 import { decodePubKey } from "./decodeNpub.js";
 
 function generateNoteUrl(noteId) {
@@ -53,11 +53,11 @@ async function fetchImageEvents(requestedPubkey, startDate, endDate) {
       }
     };
 
-    ws.on('message', onMessage);
-    ws.send(JSON.stringify(subscription));
+    pool.on('message', onMessage);
+    pool.send(JSON.stringify(subscription));
 
     setTimeout(() => {
-      ws.off('message', onMessage);
+      pool.off('message', onMessage);
       resolve(imageEvents);
     }, 5000);
   });

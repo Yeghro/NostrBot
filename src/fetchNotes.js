@@ -1,4 +1,4 @@
-import { ws } from "./nostrClient.js";
+import { createPool, DEFAULT_RELAYS } from "./nostrConnection.js";
 import { decodePubKey } from "./decodeNpub.js";
 
 // Update URL generator to use primal.net
@@ -58,11 +58,11 @@ async function fetchEventNotes(requestedPubkey, startDate, endDate) {
       }
     };
 
-    ws.on('message', onMessage);
-    ws.send(JSON.stringify(subscription));
+    pool.on('message', onMessage);
+    pool.send(JSON.stringify(subscription));
 
     setTimeout(() => {
-      ws.removeListener('message', onMessage);
+      pool.removeListener('message', onMessage);
       resolve(notes); // Resolve with the contents of the notes
     }, 5000);
   });

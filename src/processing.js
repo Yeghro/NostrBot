@@ -1,8 +1,10 @@
 import { sendMessageToOllama } from './ollamaReq.js';
 import { publicKey, privateKey } from './configs.js';
 import { getSignedEvent } from './eventSigning.js';
-import { ws } from './nostrClient.js';
+import { createPool, DEFAULT_RELAYS } from './nostrConnection.js';
 import { encrypt } from 'nostr-tools/nip04';
+
+const { pool, cleanup } = createPool();
 
 function formatNote(note) {
   const timestamp = new Date(note.created_at).toLocaleString();
@@ -55,7 +57,8 @@ export async function processTextNote(event, data) {
     return;
   }
 
-  ws.send(JSON.stringify(["EVENT", signedReply]));
+  const pubs = pool.publish(DEFAULT_RELAYS, signedReply);
+  await Promise.all(pubs);
   console.log('Reply sent:', signedReply);
 }
 
@@ -105,7 +108,8 @@ export async function processDirectMessage(event, data) {
     return;
   }
 
-  ws.send(JSON.stringify(["EVENT", signedReply]));
+  const pubs = pool.publish(DEFAULT_RELAYS, signedReply);
+  await Promise.all(pubs);
   console.log('Reply sent:', signedReply);
 }
 
@@ -142,7 +146,8 @@ export async function processNonCommand(event, data) {
       return;
     }
 
-    ws.send(JSON.stringify(["EVENT", signedReply]));
+    const pubs = pool.publish(DEFAULT_RELAYS, signedReply);
+    await Promise.all(pubs);
     console.log('Reply sent:', signedReply);
   } else if (event.kind === 4) {
     const encryptedReplyContent = await encrypt(privateKey, pubkey, replyContent);
@@ -160,7 +165,8 @@ export async function processNonCommand(event, data) {
       return;
     }
 
-    ws.send(JSON.stringify(["EVENT", signedReply]));
+    const pubs = pool.publish(DEFAULT_RELAYS, signedReply);
+    await Promise.all(pubs);
     console.log('Reply sent:', signedReply);
   }
 }

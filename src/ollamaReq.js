@@ -1,6 +1,6 @@
 export async function sendMessageToOllama(messages) {
     const body = {
-      model: "llama3.2",
+      model: "hAiVbot:latest",
       messages: messages,
       stream: false,
     };

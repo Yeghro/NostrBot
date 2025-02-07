@@ -1,66 +1,58 @@
-import WebSocket from 'ws';
-import crypto from 'crypto'; // For UUID generation
-import { decrypt } from 'nostr-tools/nip04';
 import { processDirectMessage, processTextNote, processNonCommand } from './processing.js';
 import { publicKey, privateKey } from './configs.js';
 import { fetchImages } from './imageFetch.js';
 import { fetchNotes } from './fetchNotes.js';
+import { createPool, DEFAULT_RELAYS, normalizePublicKey } from './nostrConnection.js';
+import { decrypt } from 'nostr-tools/nip04';
 
-export let ws; // WebSocket connection
-
-let startTime;  // Store the start time at a scope accessible by the ws.on('message') handler
-
+export let subscriptionHandle;
+let startTime;
 let reconnectionAttempts = 0;
+const { pool, cleanup } = createPool();
+
+console.log("Using the following keys:", publicKey, privateKey);
 
 export function connectWebSocket() {
-    ws = new WebSocket('wss://relay.primal.net');
-
-    ws.on('open', () => {
-        console.log(`${new Date().toISOString()} - Connected to the relay`);
-        sendSubscription();
-        reconnectionAttempts = 0; // Reset the reconnection attempts on a successful connection
-    });
-
-    ws.on('message', (data) => {
-      const messageString = data.toString();
-      try {
-          const events = JSON.parse(messageString);
-          events.forEach(event => {
-              if (event.created_at && event.created_at >= startTime) {
-                  handleEvent(event);
-              } else {
-                  //console.log(`Ignoring old event from before start time: ${event.created_at}`);
-              }
-          });
-      } catch (error) {
-          console.error(`${new Date().toISOString()} - Error parsing JSON or processing event:`, error);
-      }
-    });
-
-    ws.on('error', (error) => {
-        console.error(`${new Date().toISOString()} - WebSocket error:`, error);
+    // Adjust start time to 5 seconds before the current time
+    startTime = Math.floor(Date.now() / 1000) - 5;
+    
+    try {
+        subscriptionHandle = pool.subscribeMany(
+            DEFAULT_RELAYS,
+            [{ kinds: [4, 1] }],
+            {
+                onevent(event) {
+                    if (event.created_at && event.created_at >= startTime) {
+                        handleEvent(event);
+                    }
+                },
+                oneose() {
+                    console.log(`${new Date().toISOString()} - EOSE received from relays`);
+                    reconnectionAttempts = 0; // Reset attempts on successful connection
+                },
+                onerror(err) {
+                    console.error(`${new Date().toISOString()} - Subscription error:`, err);
+                    attemptReconnect();
+                }
+            }
+        );
+        
+        console.log(`${new Date().toISOString()} - Connected to relays: ${DEFAULT_RELAYS}`);
+    } catch (error) {
+        console.error(`${new Date().toISOString()} - Error connecting to relays:`, error);
         attemptReconnect();
-    });
-
-    ws.on('close', () => {
-        console.log(`${new Date().toISOString()} - Disconnected from the relay`);
-        attemptReconnect();
-    });
-}
-
-function sendSubscription() {
-  // Adjust start time to 5 seconds before the current time to catch any events that occur during connection setup
-  startTime = Math.floor(Date.now() / 1000) - 5;
-  const subscriptionId = crypto.randomUUID();
-  const subscription = ["REQ", subscriptionId, { kinds: [4,1] }];  // Subscribe to kind 4 and 1 events
-  ws.send(JSON.stringify(subscription));
-  console.log(`${new Date().toISOString()} - Subscription message sent with adjusted start time:`, startTime);
+    }
 }
 
 function attemptReconnect() {
     reconnectionAttempts++;
-    const reconnectDelay = Math.min(30000, (2 ** reconnectionAttempts) * 1000); // Delay grows exponentially but caps at 30 seconds
+    const reconnectDelay = Math.min(30000, (2 ** reconnectionAttempts) * 1000);
     console.log(`${new Date().toISOString()} - Attempting to reconnect in ${reconnectDelay / 1000} seconds...`);
+    
+    if (subscriptionHandle) {
+        subscriptionHandle.close();
+    }
+    
     setTimeout(connectWebSocket, reconnectDelay);
 }
 
@@ -133,10 +125,24 @@ async function processEvent(event) {
   // Decrypt if needed (kind 4)
   if (event.kind === 4) {
     try {
+      console.log('Attempting to decrypt with:');
+      console.log('Private key length:', privateKey?.length);
+      console.log('Sender pubkey length:', pubkey?.length);
+      console.log('Content length:', content?.length);
+      
+      if (!privateKey) {
+        throw new Error('Private key is missing');
+      }
+      
       content = await decrypt(privateKey, pubkey, content);
       content = sanitizeInput(content); // Sanitize after decryption too
     } catch (error) {
       console.error('Failed to decrypt message:', error);
+      console.error('Debug info:', {
+        hasPrivateKey: !!privateKey,
+        senderPubkeyPresent: !!pubkey,
+        contentPresent: !!content
+      });
       return;
     }
   }

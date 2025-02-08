@@ -1,6 +1,7 @@
-import { SimplePool } from 'nostr-tools';
+import { SimplePool } from 'nostr-tools/pool';
 import { nip19 } from 'nostr-tools';
 import { useWebSocketImplementation } from 'nostr-tools/pool';
+import WebSocket from 'ws';
 
 // Initialize WebSocket implementation for Node.js
 useWebSocketImplementation(WebSocket);

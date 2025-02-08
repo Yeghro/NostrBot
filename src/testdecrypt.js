@@ -1,6 +1,5 @@
 import {publicKey, privateKey} from "./configs.js";
 import { encrypt, decrypt } from "./encryption.js";
-import { bytesToHex, randomBytes } from '@noble/hashes/utils';
 
 const hex = hexConverter(new Uint8Array([1, 2, 3]));
 

@@ -1,5 +1,10 @@
+<<<<<<< HEAD
 env
 **/*.env
 .cursorrules
 node_modules
 
+=======
+node_modules
+.env
+>>>>>>> 719dd1567cb28e87e1e503bad8ccf3cf4e8756fa
